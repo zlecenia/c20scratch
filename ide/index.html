@@ -14,6 +14,7 @@
         <block type="add_view"></block>
     </category>
     <category id="apiCategory" name="API" colour="230"></category>
+    <category id="scriptsCategory" name="Scripts" colour="290"></category>
 </xml>
 
 <script>
@@ -101,6 +102,51 @@
 
     // Start: generuj bloki z OpenAPI
     generateApiBlocks();
+    
+    // ---- Ładowanie bloków ze skryptów ----
+    async function loadScripts() {
+      try {
+        const res = await fetch("/scripts.json");
+        const scripts = await res.json();
+        const scriptsCat = document.getElementById("scriptsCategory");
+
+        scripts.forEach(scr => {
+          const blockName = `run_${scr.func}_${scr.script.replace(/\W/g,"_")}`;
+          const blockEl = document.createElement("block");
+          blockEl.setAttribute("type", blockName);
+          scriptsCat.appendChild(blockEl);
+
+          Blockly.Blocks[blockName] = {
+            init: function() {
+              this.appendDummyInput().appendField("Uruchom " + scr.script + " → " + scr.func);
+              scr.params.forEach(p=>{
+                this.appendValueInput(p).appendField(p);
+              });
+              this.setPreviousStatement(true, null);
+              this.setNextStatement(true, null);
+              this.setColour(290);
+            }
+          };
+
+          Blockly.JavaScript[blockName] = function(block) {
+            let args = scr.params.map(p=>{
+              let val = Blockly.JavaScript.valueToCode(block,p,Blockly.JavaScript.ORDER_ATOMIC)||'""';
+              return val;
+            });
+            return `fetch("/run-script",{method:"POST",headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({script:"${scr.script}",func:"${scr.func}",args:[${args.join(",")}]})})
+              .then(r=>r.json()).then(res=>{
+                document.body.insertAdjacentHTML("beforeend","<pre>"+JSON.stringify(res,null,2)+"</pre>");
+              });\n`;
+          };
+        });
+      } catch (e) {
+        console.error("Failed to load scripts", e);
+      }
+    }
+    
+    // Load scripts after API blocks
+    loadScripts();
 </script>
 </body>
 </html>

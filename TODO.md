@@ -187,3 +187,255 @@ async function loadScripts() {
 
 ---
 
+👌 to składamy to w całość: **pełny przepływ** → serwer backend (np. Flask w Pythonie) + frontend Blockly.
+
+Twoje IDE będzie mogło:
+
+* **parsować OpenAPI** i tworzyć bloki API,
+* **parsować folder `scripts/`** (Python + Bash) i robić bloki skryptów,
+* generować kod JS, który wywoła backend,
+* backend odpali skrypt (`subprocess.run`) i zwróci wynik w JSON.
+
+---
+
+# 🔧 Backend – Flask (`server.py`)
+
+```python
+from flask import Flask, request, jsonify, send_from_directory
+import subprocess, os, re, json
+
+app = Flask(__name__)
+
+SCRIPTS_FOLDER = "scripts"
+
+# ---- Parsowanie Python ----
+def parse_python(file_path):
+    with open(file_path) as f:
+        code = f.read()
+    matches = re.findall(r'def\s+(\w+)\s*\((.*?)\):', code)
+    functions = []
+    for name, args in matches:
+        params = [p.strip().split('=')[0] for p in args.split(',') if p.strip()]
+        functions.append({"name": name, "params": params})
+    return functions
+
+# ---- Parsowanie Bash ----
+def parse_bash(file_path):
+    params = []
+    with open(file_path) as f:
+        for line in f:
+            if line.startswith("# param:"):
+                _, spec = line.split(":",1)
+                params.append(spec.strip().split()[0])
+    return [{"name": os.path.basename(file_path), "params": params}]
+
+# ---- Skanowanie katalogu ----
+def scan_scripts():
+    scripts = []
+    for fname in os.listdir(SCRIPTS_FOLDER):
+        path = os.path.join(SCRIPTS_FOLDER, fname)
+        if fname.endswith(".py"):
+            for fn in parse_python(path):
+                scripts.append({"script": fname, "func": fn["name"], "params": fn["params"]})
+        elif fname.endswith(".sh"):
+            for fn in parse_bash(path):
+                scripts.append({"script": fname, "func": fn["name"], "params": fn["params"]})
+    return scripts
+
+@app.route("/scripts.json")
+def scripts_json():
+    return jsonify(scan_scripts())
+
+# ---- Uruchamianie skryptu ----
+@app.route("/run-script", methods=["POST"])
+def run_script():
+    data = request.json
+    script = data["script"]
+    func = data.get("func")
+    args = data.get("args", [])
+
+    script_path = os.path.join(SCRIPTS_FOLDER, script)
+    if not os.path.exists(script_path):
+        return jsonify({"error": "Script not found"}), 404
+
+    try:
+        if script.endswith(".py"):
+            cmd = ["python3", script_path] + [str(a) for a in args]
+        else:
+            cmd = ["bash", script_path] + [str(a) for a in args]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return jsonify({"stdout": result.stdout, "stderr": result.stderr, "code": result.returncode})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ---- Serwowanie frontendu ----
+@app.route("/")
+def index():
+    return send_from_directory(".", "index.html")
+
+@app.route("/<path:path>")
+def static_files(path):
+    return send_from_directory(".", path)
+
+if __name__ == "__main__":
+    app.run(debug=True)
+```
+
+---
+
+# 🔧 Frontend (`index.html`)
+
+➡️ ten frontend:
+
+* ładuje bloki API (np. z `openapi.json`),
+* ładuje bloki skryptów (`/scripts.json` z backendu),
+* pozwala przeciągać i generować kod,
+* wysyła `fetch('/run-script', …)` do backendu.
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <script src="https://unpkg.com/blockly/blockly.min.js"></script>
+</head>
+<body>
+  <h2>IDE (API + Skrypty)</h2>
+  <div style="display: flex; gap:20px;">
+    <div id="blocklyDiv" style="height: 600px; width: 50%;"></div>
+    <iframe id="preview" style="height: 600px; width: 50%; border:1px solid #ccc;"></iframe>
+  </div>
+
+  <xml id="toolbox" style="display:none">
+    <category name="UI" colour="120">
+      <block type="add_view"></block>
+    </category>
+    <category id="apiCategory" name="API" colour="230"></category>
+    <category id="scriptsCategory" name="Scripts" colour="290"></category>
+  </xml>
+
+  <script>
+    const workspace = Blockly.inject('blocklyDiv', { toolbox: document.getElementById('toolbox') });
+
+    // ---- Widok ----
+    Blockly.Blocks['add_view'] = {
+      init: function() {
+        this.appendDummyInput().appendField("Dodaj widok").appendField(new Blockly.FieldTextInput("Widok"), "VIEW");
+        this.appendStatementInput("CONTENT").setCheck(null).appendField("zawiera");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(120);
+      }
+    };
+    Blockly.JavaScript['add_view'] = function(block) {
+      const name = block.getFieldValue('VIEW');
+      const content = Blockly.JavaScript.statementToCode(block, 'CONTENT');
+      return `views.push({name:"${name}", html:\`${content}\`});\n`;
+    };
+
+    // ---- Ładowanie bloków ze skryptów ----
+    async function loadScripts() {
+      const res = await fetch("/scripts.json");
+      const scripts = await res.json();
+      const scriptsCat = document.getElementById("scriptsCategory");
+
+      scripts.forEach(scr => {
+        const blockName = `run_${scr.func}_${scr.script.replace(/\W/g,"_")}`;
+        const blockEl = document.createElement("block");
+        blockEl.setAttribute("type", blockName);
+        scriptsCat.appendChild(blockEl);
+
+        Blockly.Blocks[blockName] = {
+          init: function() {
+            this.appendDummyInput().appendField("Uruchom " + scr.script + " → " + scr.func);
+            scr.params.forEach(p=>{
+              this.appendValueInput(p).appendField(p);
+            });
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(290);
+          }
+        };
+
+        Blockly.JavaScript[blockName] = function(block) {
+          let args = scr.params.map(p=>{
+            let val = Blockly.JavaScript.valueToCode(block,p,Blockly.JavaScript.ORDER_ATOMIC)||'""';
+            return val;
+          });
+          return `fetch("/run-script",{method:"POST",headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({script:"${scr.script}",func:"${scr.func}",args:[${args.join(",")}]})})
+            .then(r=>r.json()).then(res=>{
+              document.body.insertAdjacentHTML("beforeend","<pre>"+JSON.stringify(res,null,2)+"</pre>");
+            });\n`;
+        };
+      });
+    }
+
+    // ---- Generowanie wynikowego HTML ----
+    function runCode() {
+      let code = Blockly.JavaScript.workspaceToCode(workspace);
+      let wrapper = `
+        let views = [];
+        let htmlOutput = "";
+        ${code}
+        let finalHTML = "";
+        views.forEach(v=>{
+          finalHTML += '<section id="'+v.name+'">'+v.html+'</section>';
+        });
+        finalHTML += htmlOutput;
+        document.body.innerHTML = finalHTML;
+      `;
+      document.getElementById('preview').srcdoc = "<script>"+wrapper+"<\/script>";
+    }
+
+    setInterval(runCode, 3000);
+
+    // Start
+    loadScripts();
+  </script>
+</body>
+</html>
+```
+
+---
+
+# 🔄 Przykład działania
+
+1. W katalogu `scripts/` masz np.:
+   **process\_data.py**
+
+   ```python
+   def main(input_file, threshold=0.5):
+       print(f"Processing {input_file} with threshold {threshold}")
+   if __name__ == "__main__":
+       import sys
+       main(*sys.argv[1:])
+   ```
+
+   **deploy.sh**
+
+   ```bash
+   #!/bin/bash
+   # param: env string
+   # param: version string
+   echo "Deploying to $1 version $2"
+   ```
+
+2. Backend `/scripts.json` zwróci:
+
+   ```json
+   [
+     {"script":"process_data.py","func":"main","params":["input_file","threshold"]},
+     {"script":"deploy.sh","func":"deploy.sh","params":["env","version"]}
+   ]
+   ```
+
+3. W edytorze pojawią się bloki:
+
+    * „Uruchom process\_data.py → main” z polami `input_file`, `threshold`.
+    * „Uruchom deploy.sh → deploy.sh” z polami `env`, `version`.
+
+4. Wygenerowany kod odpala backend, który naprawdę uruchomi skrypt i zwróci wynik (stdout/stderr).
+
+---
+
