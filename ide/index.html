@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <script src="https://unpkg.com/blockly/blockly.min.js"></script>
+</head>
+<body>
+<h2>IDE z OpenAPI → automatyczne bloki</h2>
+<div id="blocklyDiv" style="height: 500px; width: 50%; float:left;"></div>
+<iframe id="preview" style="height: 500px; width: 50%; float:left; border:1px solid #ccc;"></iframe>
+
+<xml id="toolbox" style="display:none">
+    <category name="UI" colour="120">
+        <block type="add_view"></block>
+    </category>
+    <category id="apiCategory" name="API" colour="230"></category>
+</xml>
+
+<script>
+    const workspace = Blockly.inject('blocklyDiv', { toolbox: document.getElementById('toolbox') });
+
+    // --- Prosty blok UI (widok) ---
+    Blockly.Blocks['add_view'] = {
+        init: function() {
+            this.appendDummyInput().appendField("Dodaj widok").appendField(new Blockly.FieldTextInput("Widok"), "VIEW");
+            this.appendStatementInput("CONTENT").setCheck(null).appendField("zawiera");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(120);
+        }
+    };
+    Blockly.JavaScript['add_view'] = function(block) {
+        const name = block.getFieldValue('VIEW');
+        const content = Blockly.JavaScript.statementToCode(block, 'CONTENT');
+        return `views.push({name:"${name}", html:\`${content}\`});\n`;
+    };
+
+    // --- Funkcja: Generowanie bloków API z OpenAPI ---
+    async function generateApiBlocks() {
+        const spec = await loadOpenAPI("https://petstore.swagger.io/v2/swagger.json");
+        const apiCategory = document.getElementById("apiCategory");
+
+        Object.entries(spec.paths).forEach(([path, methods]) => {
+            Object.entries(methods).forEach(([method, details]) => {
+                const blockName = `api_${method}_${path.replace(/[\/{}]/g, "_")}`;
+                const summary = details.summary || `${method.toUpperCase()} ${path}`;
+
+                // Dodaj blok do toolbox
+                const blockEl = document.createElement("block");
+                blockEl.setAttribute("type", blockName);
+                apiCategory.appendChild(blockEl);
+
+                // Definicja bloku
+                Blockly.Blocks[blockName] = {
+                    init: function() {
+                        this.appendDummyInput().appendField(summary);
+                        this.setPreviousStatement(true, null);
+                        this.setNextStatement(true, null);
+                        this.setColour(230);
+                    }
+                };
+
+                // Kod JS z bloku
+                Blockly.JavaScript[blockName] = function() {
+                    return `
+              htmlOutput += '<pre id="${blockName}">Ładowanie...</pre>';
+              fetch("${spec.schemes?.[0] || "https"}://${spec.host}${spec.basePath}${path}")
+                .then(r => r.json())
+                .then(data => {
+                  document.getElementById("${blockName}").innerText = JSON.stringify(data,null,2);
+                });
+            `;
+                };
+            });
+        });
+    }
+
+    async function loadOpenAPI(url) {
+        const res = await fetch(url);
+        return res.json();
+    }
+
+    // --- Generowanie wynikowego HTML ---
+    function runCode() {
+        let code = Blockly.JavaScript.workspaceToCode(workspace);
+        let wrapper = `
+        let views = [];
+        let htmlOutput = "";
+        ${code}
+        let finalHTML = "";
+        views.forEach(v=>{
+          finalHTML += '<section id="'+v.name+'">'+v.html+'</section>';
+        });
+        finalHTML += htmlOutput;
+        document.body.innerHTML = finalHTML;
+      `;
+        document.getElementById('preview').srcdoc = "<script>"+wrapper+"<\/script>";
+    }
+
+    setInterval(runCode, 3000);
+
+    // Start: generuj bloki z OpenAPI
+    generateApiBlocks();
+</script>
+</body>
+</html>

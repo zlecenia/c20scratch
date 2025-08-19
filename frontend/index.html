@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel testowania – SCBA</title>
+  <style>
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#f7f7f7; }
+    header{ padding:12px 16px; background:white; border-bottom:1px solid #e5e5e5; display:flex; justify-content:space-between; align-items:center;}
+    .grid{ display:grid; grid-template-columns: 320px 1fr 360px; gap:12px; padding:12px; align-items:start;}
+    .card{ background:white; border:1px solid #e5e5e5; border-radius:16px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+    .card header{ background:#fcfcfc; border-bottom:1px solid #eee; font-weight:600; }
+    .section{ padding:8px 12px; border-bottom:1px solid #f1f1f1;}
+    .section h4{ margin:8px 0 6px; font-size:14px; text-transform:uppercase; color:#6b7280; }
+    .option{ padding:8px 10px; margin:4px 0; border:1px solid #eee; border-radius:10px; cursor:pointer; }
+    .option:hover{ background:#f8fafc; }
+    .option.active{ background:#eef2ff; border-color:#6366f1; }
+    iframe{ width:100%; height:75vh; border:0; }
+    .meta{ font-size:12px; color:#6b7280; padding:8px 12px;}
+    .kv{ display:flex; justify-content:space-between; padding:6px 12px; border-bottom:1px dashed #eee; font-size:14px;}
+    .big{ font-size:28px; font-weight:700; }
+    .muted{ color:#6b7280; font-size:12px; }
+    #menuCard{ max-height: calc(100vh - 100px); overflow:auto; }
+    .option .label{ display:inline-block; }
+    .option .hint{ display:block; font-size:12px; color:#6b7280; margin-top:2px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>Poszerzona struktura programu – Menu testowania</strong></div>
+    <div id="user-meta" class="muted"></div>
+  </header>
+  <div class="grid">
+    <!-- LEFT: MENU -->
+    <div class="card" id="menuCard">
+      <header class="section">MENU</header>
+      <div id="menuRoot"></div>
+      <div class="meta" id="deviceMeta"></div>
+      <div class="meta" id="selectionSummary"></div>
+    </div>
+
+    <!-- CENTER: INTERACTION (iframe) -->
+    <div class="card">
+      <header class="section">INTERACTION</header>
+      <iframe id="viewer" src="./pages/1.html"></iframe>
+      <div class="meta" id="helpBox">Informacje o Problemach, wskazówkach dla użytkownika</div>
+    </div>
+
+    <!-- RIGHT: DATA SENSORS -->
+    <div class="card">
+      <header class="section">DATA SENSORS</header>
+      <div class="kv"><span id="labelLow">etykieta niskiego ciśnienia</span><span class="big" id="valLow">--</span></div>
+      <div class="kv"><span id="labelMid">etykieta średniego ciśnienia</span><span class="big" id="valMid">--</span></div>
+      <div class="kv"><span id="labelHigh">etykieta wysokiego ciśnienia</span><span class="big" id="valHigh">--</span></div>
+      <div class="section">
+        <div class="muted">Device Status</div>
+        <div id="status">–</div>
+      </div>
+      <div class="meta" id="endpointMeta"></div>
+    </div>
+  </div>
+
+<script>
+const API = (window.API_URL || "") || (location.origin.replace(":3000",":5000")); // dev hint
+async function loadConfig(){
+  const res = await fetch(API + '/api/config'); return res.json();
+}
+async function loadMenu(){
+  const res = await fetch(API + '/api/menu'); return res.json();
+}
+function renderMenu(data){
+  const root = document.getElementById('menuRoot');
+  const iframe = document.getElementById('viewer');
+  const summaryEl = document.getElementById('selectionSummary');
+  root.innerHTML = '';
+  const selections = {};
+  const updateSummary = () => {
+    const lines = Object.entries(selections).map(([k,v]) => `${k}: ${v}`);
+    summaryEl.textContent = lines.length ? ('Wybrane → ' + lines.join(' | ')) : '';
+  };
+  (data.menu || []).forEach((section, si) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'section';
+    const h = document.createElement('h4'); h.textContent = section.name; wrap.appendChild(h);
+    const options = (section.options || []);
+    options.forEach((opt, oi) => {
+      const optObj = (typeof opt === 'string') ? { label: opt } : (opt || {});
+      const div = document.createElement('div');
+      div.className = 'option';
+      div.innerHTML = '<span class="label"></span>' + (optObj.hint ? '<span class="hint">'+optObj.hint+'</span>' : '');
+      div.querySelector('.label').textContent = optObj.label || optObj.text || String(opt);
+      div.onclick = () => {
+        // mark active only within this section
+        wrap.querySelectorAll('.option').forEach(n=>n.classList.remove('active'));
+        div.classList.add('active');
+        // resolve page mapping: option.page > section.page > fallback
+        const page = optObj.page || section.page;
+        if(page){
+          iframe.src = './pages/' + page + '.html';
+        }else{
+          const pageIndex = Math.min(si+1, 5); // backward-compat fallback
+          iframe.src = './pages/' + pageIndex + '.html';
+        }
+        document.getElementById('helpBox').textContent = section.name + ' → ' + (optObj.label || optObj.text || opt);
+        const key = section.key || section.name || `sekcja_${si+1}`;
+        selections[key] = (optObj.label || optObj.text || String(opt));
+        updateSummary();
+      };
+      wrap.appendChild(div);
+    });
+    root.appendChild(wrap);
+  });
+
+  // Default selection: first option of first section
+  try{
+    const firstSection = root.querySelector('.section');
+    const firstOpt = firstSection?.querySelector('.option');
+    if(firstOpt){ firstOpt.click(); }
+  }catch(e){}
+}
+async function tick(){
+  try{
+    const res = await fetch(API + '/api/sensors');
+    const d = await res.json();
+    document.getElementById('labelLow').textContent = d.labels.low;
+    document.getElementById('labelMid').textContent = d.labels.mid;
+    document.getElementById('labelHigh').textContent = d.labels.high;
+    document.getElementById('valLow').textContent = d.values.low + ' ' + d.unit;
+    document.getElementById('valMid').textContent = d.values.mid + ' ' + d.unit;
+    document.getElementById('valHigh').textContent = d.values.high + ' ' + d.unit;
+    document.getElementById('endpointMeta').textContent = d.device.name + ' , ' + d.device.type + ' — ' + d.device.endpoint;
+    document.getElementById('status').textContent = 'OK';
+  }catch(e){
+    document.getElementById('status').textContent = 'Brak połączenia z API';
+  }
+}
+async function boot(){
+  try{
+    const cfg = await loadConfig();
+    document.getElementById('user-meta').textContent = new Date().toLocaleString();
+    document.getElementById('deviceMeta').textContent = 'role: operator | ' + cfg.DEVICE_NAME;
+  }catch(e){}
+  const menu = await loadMenu();
+  renderMenu(menu);
+  tick();
+  setInterval(tick, 1000);
+}
+boot();
+</script>
+</body>
+</html>
