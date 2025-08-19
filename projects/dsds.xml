@@ -1,0 +1,7 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+    <block type="ui_image" id="n|bvvdjNcT-/V2a%-9Kz" x="47" y="53">
+        <field name="SRC">https://via.placeholder.com/300</field>
+        <field name="ALT">obraz</field>
+        <field name="WIDTH">300</field>
+    </block>
+</xml>

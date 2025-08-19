@@ -6,19 +6,292 @@
 </head>
 <body>
 <h2>IDE z OpenAPI → automatyczne bloki</h2>
-<div id="blocklyDiv" style="height: 500px; width: 50%; float:left;"></div>
-<iframe id="preview" style="height: 500px; width: 50%; float:left; border:1px solid #ccc;"></iframe>
+<div id="controls" style="margin: 8px 0;">
+  <button id="runBtn">Run Preview</button>
+  <label style="margin-left:12px;">
+    <input type="checkbox" id="autoRunToggle" /> Auto-run on changes
+  </label>
+  <span id="autoRunStatus" style="margin-left:8px;color:#666;"></span>
+  <!-- The controls trigger runCode() and an optional debounced auto-run -->
+  <!-- Manual test UI inside the preview remains available for generator diagnostics -->
+  
+  <input id="projectName" placeholder="project name" style="margin-left:12px;" />
+  <button id="saveProjectBtn">Save Project</button>
+  <select id="projectList" style="margin-left:6px;"></select>
+  <button id="loadProjectBtn">Load</button>
+  <span style="margin:0 8px;">|</span>
+  <label>Demo:</label>
+  <select id="demoList" style="margin-left:6px; min-width:140px"></select>
+  <button id="loadDemoBtn">Load Demo</button>
+  <button id="refreshProjectsBtn">Refresh</button>
+  <span id="projectStatus" style="margin-left:8px;color:#666;"></span>
+  <span style="margin:0 8px;">|</span>
+  <button id="saveHtmlBtn">Save HTML</button>
+  <button id="openHtmlBtn">Open HTML</button>
+  <span style="margin:0 8px;">|</span>
+  <input id="uploadInput" type="file" accept=".xml,.svg" />
+  <button id="uploadBtn">Upload</button>
+  <select id="uploadsList" style="margin-left:6px; min-width:140px"></select>
+  <button id="openUploadBtn">Open File</button>
+  <button id="loadXmlToWorkspaceBtn">Load XML to Workspace</button>
+</div>
+<div id="mainSplit" style="display:flex; gap:8px; align-items:stretch;">
+  <div id="blockCol" style="flex:1; min-width:0;">
+    <div id="blocklyDiv" style="height: 500px; width: 100%;"></div>
+  </div>
+  <iframe id="preview" style="flex:1; min-width:0; height: 500px; border:1px solid #ccc;"></iframe>
+  <div id="codeCol" style="flex:1; min-width:0;">
+    <textarea id="codeEditor" spellcheck="false" style="width:100%; height:500px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size:12px; line-height:1.4; border:1px solid #ccc; border-radius:4px; padding:8px;"></textarea>
+  </div>
+</div>
 
 <xml id="toolbox" style="display:none">
     <category name="UI" colour="120">
         <block type="add_view"></block>
+        <block type="ui_heading"></block>
+        <block type="ui_paragraph"></block>
+        <block type="ui_html"></block>
+        <block type="ui_image"></block>
+        <block type="ui_container"></block>
+        <block type="ui_button"></block>
+        <block type="ui_link"></block>
+        <block type="ui_list"></block>
+        <block type="ui_table"></block>
+        <block type="ui_input"></block>
+        <block type="ui_row"></block>
+        <block type="ui_col"></block>
+        <block type="ui_divider"></block>
+        <block type="ui_spacer"></block>
+        <block type="ui_card"></block>
+        <block type="ui_alert"></block>
+        <block type="ui_code"></block>
+        <block type="ui_svg_file"></block>
+        <block type="ui_xml_file"></block>
     </category>
     <category id="apiCategory" name="API" colour="230"></category>
     <category id="scriptsCategory" name="Scripts" colour="290"></category>
 </xml>
 
-<script>
-    const workspace = Blockly.inject('blocklyDiv', { toolbox: document.getElementById('toolbox') });
+    <script>
+        const workspace = Blockly.inject('blocklyDiv', { toolbox: document.getElementById('toolbox') });
+
+        // Controls: manual Run and Auto-run toggle
+        let autoRunEnabled = true; // preview ON by default
+        function debounce(fn, delay) {
+            let t;
+            return function() {
+                const ctx = this, args = arguments;
+                clearTimeout(t);
+                t = setTimeout(function(){ fn.apply(ctx, args); }, delay);
+            };
+        }
+        const runCodeDebounced = debounce(runCode, 300);
+        // Show auto toggle as enabled by default
+        try { const t = document.getElementById('autoRunToggle'); if (t) { t.checked = true; } } catch(e){}
+        const runBtn = document.getElementById('runBtn');
+        if (runBtn) runBtn.addEventListener('click', runCode);
+        const autoToggle = document.getElementById('autoRunToggle');
+        const autoStatus = document.getElementById('autoRunStatus');
+        function updateAutoStatus(){ if (autoStatus) autoStatus.textContent = autoRunEnabled ? '(auto-run enabled)' : '(auto-run disabled)'; }
+        if (autoToggle) {
+            autoRunEnabled = true;
+            updateAutoStatus();
+            autoToggle.addEventListener('change', ()=>{
+                autoRunEnabled = !!autoToggle.checked;
+                updateAutoStatus();
+                if (autoRunEnabled) runCodeDebounced();
+            });
+        }
+        // Auto-run on workspace changes (debounced)
+        workspace.addChangeListener(function(){ if (autoRunEnabled) runCodeDebounced(); });
+
+        // Code editor wiring (3rd pane)
+        const codeEditor = document.getElementById('codeEditor');
+        function updatePreviewFromEditor(){
+            if (!codeEditor) return;
+            const code = codeEditor.value;
+            const iframeContent = buildIframeHTML(code);
+            window.lastIframeHTML = iframeContent;
+            document.getElementById('preview').srcdoc = iframeContent;
+        }
+        const updatePreviewFromEditorDebounced = debounce(updatePreviewFromEditor, 300);
+        codeEditor?.addEventListener('input', updatePreviewFromEditorDebounced);
+        codeEditor?.addEventListener('keyup', caretToBlocklyHighlight);
+        codeEditor?.addEventListener('click', caretToBlocklyHighlight);
+
+        function caretToBlocklyHighlight(){
+            if (!codeEditor) return;
+            const pos = codeEditor.selectionStart || 0;
+            const text = codeEditor.value;
+            const id = findLastMarkerId(text, pos);
+            if (id) {
+                try { workspace.highlightBlock(id); } catch(e){}
+            }
+        }
+        function findLastMarkerId(text, upTo){
+            const re = /\/\*@@B:([A-Za-z0-9_-]+):(S|E)@@\*\//g;
+            let m, lastId = null;
+            re.lastIndex = 0;
+            const slice = text.slice(0, upTo);
+            while ((m = re.exec(slice)) !== null) {
+                lastId = m[1];
+            }
+            return lastId;
+        }
+        // Scroll code editor to selected block in Blockly
+        workspace.addChangeListener(function(e){
+            try {
+                if (e && e.type === Blockly.Events.SELECTED && e.newElementId && codeEditor) {
+                    const id = e.newElementId;
+                    const pattern = new RegExp("/\\*@@B:"+id+":S@@\\*/");
+                    const idx = codeEditor.value.search(pattern);
+                    if (idx >= 0) {
+                        codeEditor.focus();
+                        codeEditor.setSelectionRange(idx, idx);
+                        // naive scroll-into-view
+                        const linesUpTo = codeEditor.value.slice(0, idx).split('\n').length;
+                        codeEditor.scrollTop = Math.max(0, (linesUpTo - 5) * 16);
+                    }
+                }
+            } catch(err){}
+        });
+
+        // ---- Project Save/Load helpers ----
+        const projectStatus = document.getElementById('projectStatus');
+        function setPStatus(msg){ if (projectStatus) projectStatus.textContent = msg || ''; }
+        function getProjectName(){ const el = document.getElementById('projectName'); return (el && el.value && el.value.trim()) ? el.value.trim() : 'project'; }
+        async function refreshProjectList(){
+            try {
+                const res = await fetch('/projects');
+                const data = await res.json();
+                const sel = document.getElementById('projectList');
+                if (!sel) return;
+                sel.innerHTML = '';
+                (data.xml || []).forEach(n=>{
+                    const opt = document.createElement('option');
+                    opt.value = n; opt.textContent = n; sel.appendChild(opt);
+                });
+                setPStatus('Projects loaded');
+            } catch(e){ setPStatus('Failed to load projects'); console.error(e); }
+        }
+        async function saveProject(){
+            try {
+                const xmlDom = Blockly.Xml.workspaceToDom(workspace);
+                const xmlText = Blockly.Xml.domToText(xmlDom);
+                const name = getProjectName();
+                const res = await fetch('/projects/save',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, xml: xmlText})});
+                const data = await res.json();
+                if (data.ok) { setPStatus('Saved: '+data.name); refreshProjectList(); }
+                else { setPStatus('Save error'); console.error(data); }
+            } catch(e){ setPStatus('Save failed'); console.error(e); }
+        }
+        async function loadProject(name){
+            const n = name || (document.getElementById('projectList')?.value);
+            if (!n) { setPStatus('Select project'); return; }
+            try {
+                const res = await fetch('/projects/'+encodeURIComponent(n));
+                const data = await res.json();
+                if (data.xml){
+                    workspace.clear();
+                    const dom = Blockly.Xml.textToDom(data.xml);
+                    Blockly.Xml.domToWorkspace(dom, workspace);
+                    setPStatus('Loaded: '+n);
+                    if (autoRunEnabled) runCodeDebounced();
+                } else { setPStatus('Load error'); console.error(data); }
+            } catch(e){ setPStatus('Load failed'); console.error(e); }
+        }
+        async function saveHtml(){
+            try {
+                // Ensure we have latest preview
+                if (!window.lastIframeHTML) runCode();
+                const name = getProjectName();
+                const res = await fetch('/projects/save_html',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, html: window.lastIframeHTML || ''})});
+                const data = await res.json();
+                if (data.ok) { setPStatus('HTML saved: '+data.name); }
+                else { setPStatus('HTML save error'); console.error(data); }
+            } catch(e){ setPStatus('HTML save failed'); console.error(e); }
+        }
+        function openHtml(){
+            const name = getProjectName();
+            window.open('/projects/html/'+encodeURIComponent(name), '_blank');
+        }
+        // Buttons wiring
+        document.getElementById('refreshProjectsBtn')?.addEventListener('click', refreshProjectList);
+        document.getElementById('saveProjectBtn')?.addEventListener('click', saveProject);
+        document.getElementById('saveHtmlBtn')?.addEventListener('click', saveHtml);
+        document.getElementById('openHtmlBtn')?.addEventListener('click', openHtml);
+
+        // ---- Uploads (SVG/XML) ----
+        async function refreshUploads(){
+            try {
+                const res = await fetch('/uploads');
+                const data = await res.json();
+                const sel = document.getElementById('uploadsList');
+                if (!sel) return;
+                sel.innerHTML = '';
+                (data.all || []).forEach(fn=>{
+                    const opt = document.createElement('option');
+                    opt.value = fn; opt.textContent = fn; sel.appendChild(opt);
+                });
+            } catch(e){ console.error('Uploads list error', e); }
+        }
+        async function uploadSelectedFile(){
+            const inp = document.getElementById('uploadInput');
+            if (!inp || !inp.files || inp.files.length === 0) return;
+            const file = inp.files[0];
+            const fd = new FormData();
+            fd.append('file', file);
+            try {
+                const res = await fetch('/uploads/upload', { method:'POST', body: fd });
+                const data = await res.json();
+                if (data.ok){
+                    setPStatus('Uploaded: '+data.filename);
+                    await refreshUploads();
+                } else {
+                    setPStatus('Upload error'); console.error(data);
+                }
+            } catch(e){ setPStatus('Upload failed'); console.error(e); }
+        }
+        function openSelectedUpload(){
+            const sel = document.getElementById('uploadsList');
+            const fn = sel && sel.value;
+            if (fn) window.open('/uploads/'+encodeURIComponent(fn), '_blank');
+        }
+        function timestampString(){
+            const d = new Date(); const pad=n=>String(n).padStart(2,'0');
+            return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+        }
+        function setDefaultProjectNameTimestamp(force){
+            const pn = document.getElementById('projectName');
+            if (!pn) return;
+            if (force || !pn.value) pn.value = timestampString();
+        }
+        async function loadUploadAsWorkspace(){
+            const sel = document.getElementById('uploadsList');
+            const fn = sel && sel.value;
+            if (!fn || !fn.toLowerCase().endsWith('.xml')) { setPStatus('Select an XML file'); return; }
+            try {
+                const res = await fetch('/uploads/'+encodeURIComponent(fn));
+                const xmlText = await res.text();
+                const dom = Blockly.Xml.textToDom(xmlText);
+                workspace.clear();
+                Blockly.Xml.domToWorkspace(dom, workspace);
+                setPStatus('Workspace loaded from: '+fn);
+                setDefaultProjectNameTimestamp(true);
+                if (autoRunEnabled) runCodeDebounced();
+            } catch(e){ setPStatus('Failed to load into workspace'); console.error(e); }
+        }
+        document.getElementById('uploadBtn')?.addEventListener('click', uploadSelectedFile);
+        document.getElementById('openUploadBtn')?.addEventListener('click', openSelectedUpload);
+        document.getElementById('loadXmlToWorkspaceBtn')?.addEventListener('click', loadUploadAsWorkspace);
+        document.getElementById('loadProjectBtn')?.addEventListener('click', async ()=>{
+            const sel = document.getElementById('projectList');
+            const name = sel && sel.value; if (!name) return;
+            try { const res = await fetch('/projects/'+encodeURIComponent(name)); const data = await res.json();
+                if (data && data.xml){ const dom = Blockly.Xml.textToDom(data.xml); workspace.clear(); Blockly.Xml.domToWorkspace(dom, workspace); setPStatus('Loaded project: '+name); setDefaultProjectNameTimestamp(true); if (autoRunEnabled) runCodeDebounced(); }
+            } catch(e){ console.error(e); setPStatus('Load project failed'); }
+        });
+        document.getElementById('loadDemoBtn')?.addEventListener('click', loadSelectedDemo);
 
     // Block definitions will be handled in initializeBlocks()
 
@@ -82,6 +355,30 @@
     }
 
     // --- Generowanie wynikowego HTML ---
+    function buildIframeHTML(code) {
+            return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <style>body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;padding:12px;}</style>
+</head>
+<body>
+    <div id="app"></div>
+    <script>
+        let views = [];
+        let htmlOutput = "";
+        ${code}
+        let finalHTML = "";
+        views.forEach(v=>{
+          finalHTML += '<section id="'+v.name+'">'+v.html+'</section>';
+        });
+        finalHTML += htmlOutput;
+        document.getElementById('app').innerHTML = finalHTML;
+    <\/script>
+</body>
+</html>`;
+    }
     function runCode() {
         try {
             // Ensure generators are registered right before code generation
@@ -123,28 +420,11 @@
             }
             
             // Create a complete HTML document structure for the iframe
-            let iframeContent = `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8" />
-</head>
-<body>
-    <div id="app"></div>
-    <script>
-        let views = [];
-        let htmlOutput = "";
-        ${code}
-        let finalHTML = "";
-        views.forEach(v=>{
-          finalHTML += '<section id="'+v.name+'">'+v.html+'</section>';
-        });
-        finalHTML += htmlOutput;
-        document.getElementById('app').innerHTML = finalHTML;
-    <\/script>
-</body>
-</html>
-`;
+            // update code editor view
+            const editor = document.getElementById('codeEditor');
+            if (editor) { editor.value = code; }
+            let iframeContent = buildIframeHTML(code);
+            window.lastIframeHTML = iframeContent;
             document.getElementById('preview').srcdoc = iframeContent;
         } catch (e) {
             console.error("Error in runCode:", e);
@@ -163,14 +443,43 @@
                 this.setColour(120);
             }
         };
+        // ui_svg_file: renders uploaded SVG by <img>
+        Blockly.Blocks['ui_svg_file'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("SVG file")
+                    .appendField(new Blockly.FieldTextInput("example.svg"), "FILENAME");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        // ui_xml_file: embeds uploaded XML with height
+        Blockly.Blocks['ui_xml_file'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("XML file")
+                    .appendField(new Blockly.FieldTextInput("example.xml"), "FILENAME")
+                    .appendField("height")
+                    .appendField(new Blockly.FieldTextInput("400"), "HEIGHT");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
         
         // Ensure JavaScript generator is properly defined
         if (!Blockly.JavaScript) {
             console.error("Blockly.JavaScript is not available!");
             return false;
         }
-        
+
         const jsGen = Blockly.JavaScript;
+        // Inject block-id markers into generated code for synchronization with the code editor
+        try {
+            jsGen.STATEMENT_PREFIX = '/*@@B:%1:S@@*/\n';
+            jsGen.STATEMENT_SUFFIX = '\n/*@@B:%1:E@@*/\n';
+        } catch(e) { console.warn('Could not set statement markers', e); }
         if (jsGen.forBlock) {
             jsGen.forBlock['add_view'] = function(block, generator) {
                 const name = block.getFieldValue('VIEW');
@@ -188,6 +497,581 @@
         // Verify the generator was registered
         console.log("add_view generator registered (forBlock):", jsGen.forBlock ? typeof jsGen.forBlock['add_view'] : 'no forBlock');
         console.log("add_view generator registered (legacy):", typeof Blockly.JavaScript['add_view']);
+
+        // --- Additional UI blocks ---
+        // ui_heading: level H1/H2/H3 + text
+        Blockly.Blocks['ui_heading'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Nagłówek")
+                    .appendField(new Blockly.FieldDropdown([["H1","1"],["H2","2"],["H3","3"],["H4","4"],["H5","5"],["H6","6"]]), "LEVEL")
+                    .appendField(new Blockly.FieldTextInput("Tytuł"), "TEXT");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_heading'] = function(block, generator) {
+                const level = block.getFieldValue('LEVEL') || '1';
+                const text = block.getFieldValue('TEXT') || '';
+                return `htmlOutput += \`<h${level}>${text}</h${level}>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_heading'] = function(block) {
+                const level = block.getFieldValue('LEVEL') || '1';
+                const text = block.getFieldValue('TEXT') || '';
+                return `htmlOutput += \`<h${level}>${text}</h${level}>\`;\n`;
+            };
+        }
+
+        // ui_paragraph: multiline text → <p>
+        Blockly.Blocks['ui_paragraph'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Akapit")
+                    .appendField(new Blockly.FieldTextInput("Treść akapitu"), "TEXT");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_paragraph'] = function(block, generator) {
+                const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
+                return `htmlOutput += \`<p>${text}</p>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_paragraph'] = function(block) {
+                const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
+                return `htmlOutput += \`<p>${text}</p>\`;\n`;
+            };
+        }
+
+        // ui_html: raw HTML passthrough
+        Blockly.Blocks['ui_html'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("HTML")
+                    .appendField(new Blockly.FieldTextInput("<div>Własny HTML</div>"), "HTML");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_html'] = function(block, generator) {
+                const html = (block.getFieldValue('HTML') || '').replace(/`/g, '\\`');
+                return `htmlOutput += \`${html}\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_html'] = function(block) {
+                const html = (block.getFieldValue('HTML') || '').replace(/`/g, '\\`');
+                return `htmlOutput += \`${html}\`;\n`;
+            };
+        }
+
+        // ui_image: <img src alt width>
+        Blockly.Blocks['ui_image'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Obraz")
+                    .appendField("URL", "")
+                    .appendField(new Blockly.FieldTextInput("https://via.placeholder.com/300"), "SRC");
+                this.appendDummyInput()
+                    .appendField("ALT")
+                    .appendField(new Blockly.FieldTextInput("obraz"), "ALT");
+                this.appendDummyInput()
+                    .appendField("Szerokość")
+                    .appendField(new Blockly.FieldNumber(300, 0, 10000, 1), "WIDTH");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_image'] = function(block, generator) {
+                const src = block.getFieldValue('SRC') || '';
+                const alt = block.getFieldValue('ALT') || '';
+                const width = block.getFieldValue('WIDTH');
+                const widthAttr = width ? ` width=\"${width}\"` : '';
+                return `htmlOutput += \`<img src=\"${src}\" alt=\"${alt}\"${widthAttr}>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_image'] = function(block) {
+                const src = block.getFieldValue('SRC') || '';
+                const alt = block.getFieldValue('ALT') || '';
+                const width = block.getFieldValue('WIDTH');
+                const widthAttr = width ? ` width=\"${width}\"` : '';
+                return `htmlOutput += \`<img src=\"${src}\" alt=\"${alt}\"${widthAttr}>\`;\n`;
+            };
+        }
+
+        // ui_container: <div class> with children
+        Blockly.Blocks['ui_container'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Kontener klasa")
+                    .appendField(new Blockly.FieldTextInput("container"), "CLASS");
+                this.appendStatementInput("CHILDREN").setCheck(null).appendField("zawiera");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_container'] = function(block, generator) {
+                const klass = block.getFieldValue('CLASS') || '';
+                const children = generator.statementToCode(block, 'CHILDREN');
+                return `
+(function(){
+  const __prev = htmlOutput;
+  htmlOutput = "";
+  ${children}
+  const __children = htmlOutput;
+  htmlOutput = __prev;
+  htmlOutput += '<div class="${klass}">\n' + __children + '</div>\n';
+})();
+`;
+            };
+        } else {
+            Blockly.JavaScript['ui_container'] = function(block) {
+                const klass = block.getFieldValue('CLASS') || '';
+                const children = Blockly.JavaScript.statementToCode(block, 'CHILDREN');
+                return `
+(function(){
+  const __prev = htmlOutput;
+  htmlOutput = "";
+  ${children}
+  const __children = htmlOutput;
+  htmlOutput = __prev;
+  htmlOutput += '<div class="${klass}">\n' + __children + '</div>\n';
+})();
+`;
+            };
+        }
+
+        // ui_button: <button onclick>Text</button>
+        Blockly.Blocks['ui_button'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Przycisk")
+                    .appendField(new Blockly.FieldTextInput("Kliknij"), "TEXT");
+                this.appendDummyInput()
+                    .appendField("onclick JS")
+                    .appendField(new Blockly.FieldTextInput("alert('Klik!')"), "ONCLICK");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_button'] = function(block, generator) {
+                const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
+                const oc = (block.getFieldValue('ONCLICK') || '').replace(/`/g, '\\`');
+                const ocAttr = oc ? ` onclick=\"${oc}\"` : '';
+                return `htmlOutput += \`<button${ocAttr}>${text}</button>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_button'] = function(block) {
+                const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
+                const oc = (block.getFieldValue('ONCLICK') || '').replace(/`/g, '\\`');
+                const ocAttr = oc ? ` onclick=\"${oc}\"` : '';
+                return `htmlOutput += \`<button${ocAttr}>${text}</button>\`;\n`;
+            };
+        }
+
+        // ui_link: <a href target>Text</a>
+        Blockly.Blocks['ui_link'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Link")
+                    .appendField(new Blockly.FieldTextInput("https://example.com"), "HREF");
+                this.appendDummyInput()
+                    .appendField("tekst")
+                    .appendField(new Blockly.FieldTextInput("Odwiedź"), "TEXT");
+                this.appendDummyInput()
+                    .appendField("target")
+                    .appendField(new Blockly.FieldDropdown([["_self","_self"],["_blank","_blank"]]), "TARGET");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_link'] = function(block, generator) {
+                const href = (block.getFieldValue('HREF') || '').replace(/`/g, '\\`');
+                const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
+                const target = block.getFieldValue('TARGET') || '_self';
+                return `htmlOutput += \`<a href=\"${href}\" target=\"${target}\">${text}</a>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_link'] = function(block) {
+                const href = (block.getFieldValue('HREF') || '').replace(/`/g, '\\`');
+                const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
+                const target = block.getFieldValue('TARGET') || '_self';
+                return `htmlOutput += \`<a href=\"${href}\" target=\"${target}\">${text}</a>\`;\n`;
+            };
+        }
+
+        // ui_list: <ul><li>..</li></ul> from multiline items
+        Blockly.Blocks['ui_list'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Lista (pozycje w liniach)")
+                    .appendField(new Blockly.FieldTextInput("element 1\nelement 2"), "ITEMS");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_list'] = function(block, generator) {
+                const itemsRaw = (block.getFieldValue('ITEMS') || '');
+                const items = itemsRaw.split(/\r?\n/).filter(s=>s.trim().length>0).map(s=>s.replace(/`/g,'\\`'));
+                const lis = items.map(it=>`<li>${it}</li>`).join('');
+                return `htmlOutput += \`<ul>${lis}</ul>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_list'] = function(block) {
+                const itemsRaw = (block.getFieldValue('ITEMS') || '');
+                const items = itemsRaw.split(/\r?\n/).filter(s=>s.trim().length>0).map(s=>s.replace(/`/g,'\\`'));
+                const lis = items.map(it=>`<li>${it}</li>`).join('');
+                return `htmlOutput += \`<ul>${lis}</ul>\`;\n`;
+            };
+        }
+
+        // ui_table: simple rows (newline) and cols (pipe | separated)
+        Blockly.Blocks['ui_table'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Tabela (wiersze oddzielone \n, kolumny |)")
+                    .appendField(new Blockly.FieldTextInput("A|B|C\n1|2|3"), "ROWS");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_table'] = function(block, generator) {
+                const rowsRaw = (block.getFieldValue('ROWS') || '').split(/\r?\n/).filter(r=>r.trim().length>0);
+                const trs = rowsRaw.map(r=>{
+                    const tds = r.split('|').map(c=>`<td>${c.replace(/`/g,'\\`').trim()}</td>`).join('');
+                    return `<tr>${tds}</tr>`;
+                }).join('');
+                return `htmlOutput += \`<table border=\"1\">${trs}</table>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_table'] = function(block) {
+                const rowsRaw = (block.getFieldValue('ROWS') || '').split(/\r?\n/).filter(r=>r.trim().length>0);
+                const trs = rowsRaw.map(r=>{
+                    const tds = r.split('|').map(c=>`<td>${c.replace(/`/g,'\\`').trim()}</td>`).join('');
+                    return `<tr>${tds}</tr>`;
+                }).join('');
+                return `htmlOutput += \`<table border=\"1\">${trs}</table>\`;\n`;
+            };
+        }
+
+        // ui_input: labeled input
+        Blockly.Blocks['ui_input'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Pole")
+                    .appendField("etykieta")
+                    .appendField(new Blockly.FieldTextInput("Label"), "LABEL");
+                this.appendDummyInput()
+                    .appendField("nazwa")
+                    .appendField(new Blockly.FieldTextInput("name"), "NAME");
+                this.appendDummyInput()
+                    .appendField("typ")
+                    .appendField(new Blockly.FieldDropdown([["text","text"],["number","number"],["email","email"],["password","password"],["date","date"]]), "TYPE");
+                this.appendDummyInput()
+                    .appendField("placeholder")
+                    .appendField(new Blockly.FieldTextInput(""), "PH");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_input'] = function(block, generator) {
+                const label = (block.getFieldValue('LABEL') || '').replace(/`/g,'\\`');
+                const name = (block.getFieldValue('NAME') || '').replace(/`/g,'\\`');
+                const type = block.getFieldValue('TYPE') || 'text';
+                const ph = (block.getFieldValue('PH') || '').replace(/`/g,'\\`');
+                const phAttr = ph ? ` placeholder=\"${ph}\"` : '';
+                return `htmlOutput += \`<label>${label}: <input type=\"${type}\" name=\"${name}\"${phAttr}></label>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_input'] = function(block) {
+                const label = (block.getFieldValue('LABEL') || '').replace(/`/g,'\\`');
+                const name = (block.getFieldValue('NAME') || '').replace(/`/g,'\\`');
+                const type = block.getFieldValue('TYPE') || 'text';
+                const ph = (block.getFieldValue('PH') || '').replace(/`/g,'\\`');
+                const phAttr = ph ? ` placeholder=\"${ph}\"` : '';
+                return `htmlOutput += \`<label>${label}: <input type=\"${type}\" name=\"${name}\"${phAttr}></label>\`;\n`;
+            };
+        }
+
+        // ui_row: flex row container
+        Blockly.Blocks['ui_row'] = {
+            init: function() {
+                this.appendDummyInput().appendField("Wiersz (flex)");
+                this.appendStatementInput("CHILDREN").setCheck(null).appendField("zawiera");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_row'] = function(block, generator) {
+                const children = generator.statementToCode(block, 'CHILDREN');
+                const style = 'display:flex; gap:10px; flex-wrap:wrap;';
+                return `
+(function(){
+  const __prev = htmlOutput;
+  htmlOutput = "";
+  ${children}
+  const __children = htmlOutput;
+  htmlOutput = __prev;
+  htmlOutput += '<div style="${style}">\n' + __children + '</div>\n';
+})();
+`;
+            };
+        } else {
+            Blockly.JavaScript['ui_row'] = function(block) {
+                const children = Blockly.JavaScript.statementToCode(block, 'CHILDREN');
+                const style = 'display:flex; gap:10px; flex-wrap:wrap;';
+                return `
+(function(){
+  const __prev = htmlOutput;
+  htmlOutput = "";
+  ${children}
+  const __children = htmlOutput;
+  htmlOutput = __prev;
+  htmlOutput += '<div style="${style}">\n' + __children + '</div>\n';
+})();
+`;
+            };
+        }
+
+        // ui_col: flex column with width percentage
+        Blockly.Blocks['ui_col'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Kolumna %")
+                    .appendField(new Blockly.FieldNumber(50, 0, 100, 1), "WIDTH");
+                this.appendStatementInput("CHILDREN").setCheck(null).appendField("zawiera");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_col'] = function(block, generator) {
+                const w = Number(block.getFieldValue('WIDTH') || 50);
+                const children = generator.statementToCode(block, 'CHILDREN');
+                const style = `flex: 0 0 ${w}%; max-width: ${w}%;`;
+                return `
+(function(){
+  const __prev = htmlOutput;
+  htmlOutput = "";
+  ${children}
+  const __children = htmlOutput;
+  htmlOutput = __prev;
+  htmlOutput += '<div style="${style}">\n' + __children + '</div>\n';
+})();
+`;
+            };
+        } else {
+            Blockly.JavaScript['ui_col'] = function(block) {
+                const w = Number(block.getFieldValue('WIDTH') || 50);
+                const children = Blockly.JavaScript.statementToCode(block, 'CHILDREN');
+                const style = `flex: 0 0 ${w}%; max-width: ${w}%;`;
+                return `
+(function(){
+  const __prev = htmlOutput;
+  htmlOutput = "";
+  ${children}
+  const __children = htmlOutput;
+  htmlOutput = __prev;
+  htmlOutput += '<div style="${style}">\n' + __children + '</div>\n';
+})();
+`;
+            };
+        }
+
+        // ui_divider: <hr>
+        Blockly.Blocks['ui_divider'] = {
+            init: function() {
+                this.appendDummyInput().appendField("Separator");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_divider'] = function(block, generator) {
+                return `htmlOutput += \`<hr>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_divider'] = function(block) {
+                return `htmlOutput += \`<hr>\`;\n`;
+            };
+        }
+
+        // ui_spacer: empty div with height
+        Blockly.Blocks['ui_spacer'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Odstęp px")
+                    .appendField(new Blockly.FieldNumber(16, 0, 1000, 1), "HEIGHT");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_spacer'] = function(block, generator) {
+                const h = Number(block.getFieldValue('HEIGHT') || 16);
+                return `htmlOutput += \`<div style=\"height:${h}px\"></div>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_spacer'] = function(block) {
+                const h = Number(block.getFieldValue('HEIGHT') || 16);
+                return `htmlOutput += \`<div style=\"height:${h}px\"></div>\`;\n`;
+            };
+        }
+
+        // ui_card: simple card with title and children
+        Blockly.Blocks['ui_card'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Karta tytuł")
+                    .appendField(new Blockly.FieldTextInput("Tytuł"), "TITLE");
+                this.appendStatementInput("CHILDREN").setCheck(null).appendField("zawiera");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_card'] = function(block, generator) {
+                const title = (block.getFieldValue('TITLE') || '').replace(/`/g,'\\`');
+                const children = generator.statementToCode(block, 'CHILDREN');
+                const style = 'border:1px solid #ddd; padding:12px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05);';
+                return `
+(function(){
+  const __prev = htmlOutput;
+  htmlOutput = "";
+  ${children}
+  const __children = htmlOutput;
+  htmlOutput = __prev;
+  htmlOutput += '<div style="${style}">\n' + '<h3>${title}</h3>\n' + __children + '</div>\n';
+})();
+`;
+            };
+        } else {
+            Blockly.JavaScript['ui_card'] = function(block) {
+                const title = (block.getFieldValue('TITLE') || '').replace(/`/g,'\\`');
+                const children = Blockly.JavaScript.statementToCode(block, 'CHILDREN');
+                const style = 'border:1px solid #ddd; padding:12px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05);';
+                return `
+(function(){
+  const __prev = htmlOutput;
+  htmlOutput = "";
+  ${children}
+  const __children = htmlOutput;
+  htmlOutput = __prev;
+  htmlOutput += '<div style="${style}">\n' + '<h3>${title}</h3>\n' + __children + '</div>\n';
+})();
+`;
+            };
+        }
+
+        // ui_alert: colored message box
+        Blockly.Blocks['ui_alert'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Alert")
+                    .appendField(new Blockly.FieldDropdown([["info","info"],["success","success"],["warning","warning"],["error","error"]]), "KIND");
+                this.appendDummyInput()
+                    .appendField("tekst")
+                    .appendField(new Blockly.FieldTextInput("Wiadomość"), "TEXT");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_alert'] = function(block, generator) {
+                const kind = block.getFieldValue('KIND') || 'info';
+                const text = (block.getFieldValue('TEXT') || '').replace(/`/g,'\\`');
+                const color = {info:'#eef6ff', success:'#ecfdf5', warning:'#fffbeb', error:'#fef2f2'}[kind] || '#eef6ff';
+                const border = {info:'#bfdbfe', success:'#bbf7d0', warning:'#fde68a', error:'#fecaca'}[kind] || '#bfdbfe';
+                return `htmlOutput += \`<div style=\"background:${color}; border:1px solid ${border}; padding:10px; border-radius:6px;\">${text}</div>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_alert'] = function(block) {
+                const kind = block.getFieldValue('KIND') || 'info';
+                const text = (block.getFieldValue('TEXT') || '').replace(/`/g,'\\`');
+                const color = {info:'#eef6ff', success:'#ecfdf5', warning:'#fffbeb', error:'#fef2f2'}[kind] || '#eef6ff';
+                const border = {info:'#bfdbfe', success:'#bbf7d0', warning:'#fde68a', error:'#fecaca'}[kind] || '#bfdbfe';
+                return `htmlOutput += \`<div style=\"background:${color}; border:1px solid ${border}; padding:10px; border-radius:6px;\">${text}</div>\`;\n`;
+            };
+        }
+
+        // ui_code: preformatted code block
+        Blockly.Blocks['ui_code'] = {
+            init: function() {
+                this.appendDummyInput()
+                    .appendField("Kod")
+                    .appendField(new Blockly.FieldDropdown([["plaintext","plaintext"],["js","javascript"],["py","python"],["bash","bash"],["json","json"]]), "LANG");
+                this.appendDummyInput()
+                    .appendField(new Blockly.FieldTextInput("console.log('hello');"), "CODE");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        if (jsGen.forBlock) {
+            jsGen.forBlock['ui_code'] = function(block, generator) {
+                const lang = block.getFieldValue('LANG') || 'plaintext';
+                const code = (block.getFieldValue('CODE') || '').replace(/`/g,'\\`');
+                return `htmlOutput += \`<pre><code class=\"language-${lang}\">${code}</code></pre>\`;\n`;
+            };
+            jsGen.forBlock['ui_svg_file'] = function(block, generator){
+                const file = block.getFieldValue('FILENAME') || '';
+                const safe = file.replace(/`/g, '\\`').replace(/"/g, '&quot;');
+                return `htmlOutput += \`<img src=\"/uploads/${safe}\" alt=\"svg\" style=\"max-width:100%\"/>\`;\n`;
+            };
+            jsGen.forBlock['ui_xml_file'] = function(block, generator){
+                const file = block.getFieldValue('FILENAME') || '';
+                const height = block.getFieldValue('HEIGHT') || '400';
+                const safe = file.replace(/`/g, '\\`').replace(/"/g, '&quot;');
+                const h = height.replace(/[^0-9]/g, '') || '400';
+                return `htmlOutput += \`<object type=\"text/xml\" data=\"/uploads/${safe}\" style=\"width:100%;height:${h}px;border:1px solid #ddd\"></object>\`;\n`;
+            };
+        } else {
+            Blockly.JavaScript['ui_code'] = function(block) {
+                const lang = block.getFieldValue('LANG') || 'plaintext';
+                const code = (block.getFieldValue('CODE') || '').replace(/`/g,'\\`');
+                return `htmlOutput += \`<pre><code class=\"language-${lang}\">${code}</code></pre>\`;\n`;
+            };
+            Blockly.JavaScript['ui_svg_file'] = function(block){
+                const file = block.getFieldValue('FILENAME') || '';
+                const safe = file.replace(/`/g, '\\`').replace(/"/g, '&quot;');
+                return `htmlOutput += \`<img src=\"/uploads/${safe}\" alt=\"svg\" style=\"max-width:100%\"/>\`;\n`;
+            };
+            Blockly.JavaScript['ui_xml_file'] = function(block){
+                const file = block.getFieldValue('FILENAME') || '';
+                const height = block.getFieldValue('HEIGHT') || '400';
+                const safe = file.replace(/`/g, '\\`').replace(/"/g, '&quot;');
+                const h = height.replace(/[^0-9]/g, '') || '400';
+                return `htmlOutput += \`<object type=\"text/xml\" data=\"/uploads/${safe}\" style=\"width:100%;height:${h}px;border:1px solid #ddd\"></object>\`;\n`;
+            };
+        }
+
         return true;
     }
 
@@ -230,18 +1114,17 @@
         await loadScripts();
         
         // Temporarily disable automatic code generation to stop error spam
-        console.log("Initialization complete. Auto-generation disabled for testing.");
+        console.log("Initialization complete. Auto-generation enabled.");
+        // Load existing project list into dropdown
+        try { await refreshProjectList(); } catch(e) { console.warn('Project list load failed on init', e); }
+        try { await refreshDemoList(); } catch(e) { console.warn('Demo list load failed on init', e); }
+        try { await refreshUploads(); } catch(e) { console.warn('Uploads list load failed on init', e); }
+        // Set default project name to current date-time if empty
+        try { setDefaultProjectNameTimestamp(true); } catch(e){}
+        // Auto-run once on init
+        runCodeDebounced();
         
-        // Add manual test button to preview
-        document.getElementById('preview').srcdoc = `
-            <html>
-            <body>
-                <h3>Blockly Generator Test</h3>
-                <button onclick="parent.testCodeGeneration()">Test Code Generation</button>
-                <pre id="output">Click the button to test code generation manually.</pre>
-            </body>
-            </html>
-        `;
+        // (removed test page injection to keep auto preview)
     }
     
     // Manual test function

@@ -1,0 +1,16 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <block type="add_view" id="v1" x="20" y="20">
+    <field name="VIEW">Hello World</field>
+    <statement name="CONTENT">
+      <block type="ui_heading" id="h1">
+        <field name="LEVEL">h2</field>
+        <field name="TEXT">Witaj w demo!</field>
+        <next>
+          <block type="ui_paragraph" id="p1">
+            <field name="TEXT">To jest przykładowy projekt pokazujący generowanie HTML z bloków.</field>
+          </block>
+        </next>
+      </block>
+    </statement>
+  </block>
+</xml>
