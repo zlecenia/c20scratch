@@ -20,21 +20,7 @@
 <script>
     const workspace = Blockly.inject('blocklyDiv', { toolbox: document.getElementById('toolbox') });
 
-    // --- Prosty blok UI (widok) ---
-    Blockly.Blocks['add_view'] = {
-        init: function() {
-            this.appendDummyInput().appendField("Dodaj widok").appendField(new Blockly.FieldTextInput("Widok"), "VIEW");
-            this.appendStatementInput("CONTENT").setCheck(null).appendField("zawiera");
-            this.setPreviousStatement(true, null);
-            this.setNextStatement(true, null);
-            this.setColour(120);
-        }
-    };
-    Blockly.JavaScript['add_view'] = function(block) {
-        const name = block.getFieldValue('VIEW');
-        const content = Blockly.JavaScript.statementToCode(block, 'CONTENT');
-        return `views.push({name:"${name}", html:\`${content}\`});\n`;
-    };
+    // Block definitions will be handled in initializeBlocks()
 
     // --- Funkcja: Generowanie bloków API z OpenAPI ---
     async function generateApiBlocks() {
@@ -61,9 +47,11 @@
                     }
                 };
 
-                // Kod JS z bloku
-                Blockly.JavaScript[blockName] = function() {
-                    return `
+                // Kod JS z bloku (typed generator API with legacy fallback)
+                const jsGen = Blockly.JavaScript;
+                if (jsGen && jsGen.forBlock) {
+                    jsGen.forBlock[blockName] = function(block, generator) {
+                        return `
               htmlOutput += '<pre id="${blockName}">Ładowanie...</pre>';
               fetch("${spec.schemes?.[0] || "https"}://${spec.host}${spec.basePath}${path}")
                 .then(r => r.json())
@@ -71,7 +59,19 @@
                   document.getElementById("${blockName}").innerText = JSON.stringify(data,null,2);
                 });
             `;
-                };
+                    };
+                } else {
+                    Blockly.JavaScript[blockName] = function() {
+                        return `
+              htmlOutput += '<pre id="${blockName}">Ładowanie...</pre>';
+              fetch("${spec.schemes?.[0] || "https"}://${spec.host}${spec.basePath}${path}")
+                .then(r => r.json())
+                .then(data => {
+                  document.getElementById("${blockName}").innerText = JSON.stringify(data,null,2);
+                });
+            `;
+                    };
+                }
             });
         });
     }
@@ -83,8 +83,55 @@
 
     // --- Generowanie wynikowego HTML ---
     function runCode() {
-        let code = Blockly.JavaScript.workspaceToCode(workspace);
-        let wrapper = `
+        try {
+            // Ensure generators are registered right before code generation
+            console.log("Ensuring generators are registered...");
+            
+            // Re-register add_view generator to ensure it's available (typed generator API with legacy fallback)
+            const jsGen = Blockly.JavaScript;
+            if (jsGen && jsGen.forBlock) {
+                jsGen.forBlock['add_view'] = function(block, generator) {
+                    const name = block.getFieldValue('VIEW');
+                    const content = generator.statementToCode(block, 'CONTENT');
+                    return `views.push({name:"${name}", html:\`${content}\`});\n`;
+                };
+            } else {
+                Blockly.JavaScript['add_view'] = function(block) {
+                    const name = block.getFieldValue('VIEW');
+                    const content = Blockly.JavaScript.statementToCode(block, 'CONTENT');
+                    return `views.push({name:"${name}", html:\`${content}\`});\n`;
+                };
+            }
+            
+            console.log("add_view generator (forBlock):", jsGen && jsGen.forBlock ? typeof jsGen.forBlock['add_view'] : 'no forBlock');
+            console.log("add_view generator (legacy):", typeof Blockly.JavaScript['add_view']);
+            
+            let code = "";
+            try {
+                code = Blockly.JavaScript.workspaceToCode(workspace);
+            } catch (e) {
+                console.error("Error generating code from workspace:", e);
+                // Show error in preview
+                document.getElementById('preview').srcdoc = `
+                    <html><body>
+                        <h3>Error generating code:</h3>
+                        <pre>${e.message}</pre>
+                        <p>Please check that all blocks have proper generators defined.</p>
+                    </body></html>
+                `;
+                return;
+            }
+            
+            // Create a complete HTML document structure for the iframe
+            let iframeContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+</head>
+<body>
+    <div id="app"></div>
+    <script>
         let views = [];
         let htmlOutput = "";
         ${code}
@@ -93,15 +140,126 @@
           finalHTML += '<section id="'+v.name+'">'+v.html+'</section>';
         });
         finalHTML += htmlOutput;
-        document.body.innerHTML = finalHTML;
-      `;
-        document.getElementById('preview').srcdoc = "<script>"+wrapper+"<\/script>";
+        document.getElementById('app').innerHTML = finalHTML;
+    <\/script>
+</body>
+</html>
+`;
+            document.getElementById('preview').srcdoc = iframeContent;
+        } catch (e) {
+            console.error("Error in runCode:", e);
+        }
     }
 
-    setInterval(runCode, 3000);
+    // Define all blocks in initialization function to ensure proper timing
+    function defineBaseBlocks() {
+        // --- Prosty blok UI (widok) ---
+        Blockly.Blocks['add_view'] = {
+            init: function() {
+                this.appendDummyInput().appendField("Dodaj widok").appendField(new Blockly.FieldTextInput("Widok"), "VIEW");
+                this.appendStatementInput("CONTENT").setCheck(null).appendField("zawiera");
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(120);
+            }
+        };
+        
+        // Ensure JavaScript generator is properly defined
+        if (!Blockly.JavaScript) {
+            console.error("Blockly.JavaScript is not available!");
+            return false;
+        }
+        
+        const jsGen = Blockly.JavaScript;
+        if (jsGen.forBlock) {
+            jsGen.forBlock['add_view'] = function(block, generator) {
+                const name = block.getFieldValue('VIEW');
+                const content = generator.statementToCode(block, 'CONTENT');
+                return `views.push({name:"${name}", html:\`${content}\`});\n`;
+            };
+        } else {
+            Blockly.JavaScript['add_view'] = function(block) {
+                const name = block.getFieldValue('VIEW');
+                const content = Blockly.JavaScript.statementToCode(block, 'CONTENT');
+                return `views.push({name:"${name}", html:\`${content}\`});\n`;
+            };
+        }
+        
+        // Verify the generator was registered
+        console.log("add_view generator registered (forBlock):", jsGen.forBlock ? typeof jsGen.forBlock['add_view'] : 'no forBlock');
+        console.log("add_view generator registered (legacy):", typeof Blockly.JavaScript['add_view']);
+        return true;
+    }
 
-    // Start: generuj bloki z OpenAPI
-    generateApiBlocks();
+    // Test function to verify Blockly generator registration
+    function testGeneratorRegistration() {
+        console.log("=== BLOCKLY GENERATOR TEST ===");
+        console.log("Blockly object:", typeof Blockly);
+        console.log("Blockly.JavaScript object:", typeof Blockly.JavaScript);
+        
+        // Test simple generator registration (typed API with fallback)
+        const jsGen = Blockly.JavaScript;
+        if (jsGen.forBlock) {
+            jsGen.forBlock['test_block'] = function(block, generator) {
+                return 'console.log("test");\n';
+            };
+        } else {
+            Blockly.JavaScript['test_block'] = function(block) {
+                return 'console.log("test");\n';
+            };
+        }
+        
+        console.log("test_block (forBlock):", jsGen.forBlock ? typeof jsGen.forBlock['test_block'] : 'no forBlock');
+        console.log("add_view (forBlock):", jsGen.forBlock ? typeof jsGen.forBlock['add_view'] : 'no forBlock');
+        console.log("test_block (legacy):", typeof Blockly.JavaScript['test_block']);
+        console.log("add_view (legacy):", typeof Blockly.JavaScript['add_view']);
+    }
+
+    // Start: generuj bloki z OpenAPI i skryptów, potem uruchom runCode
+    async function initializeBlocks() {
+        // Define base blocks first
+        if (!defineBaseBlocks()) {
+            console.error("Failed to define base blocks");
+            return;
+        }
+        
+        // Test generator registration
+        testGeneratorRegistration();
+        
+        await generateApiBlocks();
+        await loadScripts();
+        
+        // Temporarily disable automatic code generation to stop error spam
+        console.log("Initialization complete. Auto-generation disabled for testing.");
+        
+        // Add manual test button to preview
+        document.getElementById('preview').srcdoc = `
+            <html>
+            <body>
+                <h3>Blockly Generator Test</h3>
+                <button onclick="parent.testCodeGeneration()">Test Code Generation</button>
+                <pre id="output">Click the button to test code generation manually.</pre>
+            </body>
+            </html>
+        `;
+    }
+    
+    // Manual test function
+    window.testCodeGeneration = function() {
+        console.log("=== MANUAL CODE GENERATION TEST ===");
+        testGeneratorRegistration();
+        
+        try {
+            let code = Blockly.JavaScript.workspaceToCode(workspace);
+            console.log("Generated code:", code);
+            document.getElementById('preview').contentDocument.getElementById('output').textContent = 
+                "Success! Generated code:\n" + code;
+        } catch (e) {
+            console.error("Code generation failed:", e);
+            document.getElementById('preview').contentDocument.getElementById('output').textContent = 
+                "Error: " + e.message;
+        }
+    };
     
     // ---- Ładowanie bloków ze skryptów ----
     async function loadScripts() {
@@ -111,42 +269,103 @@
         const scriptsCat = document.getElementById("scriptsCategory");
 
         scripts.forEach(scr => {
-          const blockName = `run_${scr.func}_${scr.script.replace(/\W/g,"_")}`;
+          const blockName = `form_${scr.func}_${scr.script.replace(/\W/g,"_")}`;
           const blockEl = document.createElement("block");
           blockEl.setAttribute("type", blockName);
           scriptsCat.appendChild(blockEl);
 
           Blockly.Blocks[blockName] = {
             init: function() {
-              this.appendDummyInput().appendField("Uruchom " + scr.script + " → " + scr.func);
-              scr.params.forEach(p=>{
-                this.appendValueInput(p).appendField(p);
-              });
+              this.appendDummyInput().appendField("Formularz do " + scr.script + " → " + scr.func);
               this.setPreviousStatement(true, null);
               this.setNextStatement(true, null);
               this.setColour(290);
             }
           };
 
-          Blockly.JavaScript[blockName] = function(block) {
-            let args = scr.params.map(p=>{
-              let val = Blockly.JavaScript.valueToCode(block,p,Blockly.JavaScript.ORDER_ATOMIC)||'""';
-              return val;
+          // Kod JS z bloku (typed generator API with legacy fallback)
+          const jsGen = Blockly.JavaScript;
+          if (jsGen && jsGen.forBlock) {
+            jsGen.forBlock[blockName] = function(block, generator) {
+              // Generowanie formularza HTML
+              let formId = `form_${scr.script}_${scr.func}`.replace(/\W/g,"_");
+              let inputs = scr.params.map(p => `<label>${p}: <input name="${p}"></label><br>`).join("");
+              let html = `
+        htmlOutput += \`
+          <form id="${formId}">
+            <h3>${scr.script} → ${scr.func}</h3>
+            ${inputs}
+            <button type="button" onclick="run_${formId}()">Uruchom</button>
+            <pre id="${formId}_output"></pre>
+          </form>\`;
+      `;
+
+              // JS do obsługi formularza
+              let jsHandler = `
+        window.run_${formId} = function(){
+          const form = document.getElementById("${formId}");
+          let data = {};
+          ${scr.params.map(p => `data["${p}"] = form.querySelector('[name="${p}"]').value;`).join("\n          ")}
+          fetch("/run-script",{method:"POST",headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({script:"${scr.script}",func:"${scr.func}",args:Object.values(data)})})
+            .then(r=>r.json())
+            .then(res=>{
+              document.querySelector('#app #${formId}_output').innerText = 
+                "stdout:\\n"+res.stdout+"\\n---\\nstderr:\\n"+res.stderr;
+            })
+            .catch(err=>{
+              document.querySelector('#app #${formId}_output').innerText = 
+                "error:\\n"+err.message;
             });
-            return `fetch("/run-script",{method:"POST",headers:{'Content-Type':'application/json'},
-              body:JSON.stringify({script:"${scr.script}",func:"${scr.func}",args:[${args.join(",")}]})})
-              .then(r=>r.json()).then(res=>{
-                document.body.insertAdjacentHTML("beforeend","<pre>"+JSON.stringify(res,null,2)+"</pre>");
-              });\n`;
-          };
+        }
+      `;
+              return html + jsHandler;
+            };
+          } else {
+            Blockly.JavaScript[blockName] = function() {
+              // Generowanie formularza HTML
+              let formId = `form_${scr.script}_${scr.func}`.replace(/\W/g,"_");
+              let inputs = scr.params.map(p => `<label>${p}: <input name="${p}"></label><br>`).join("");
+              let html = `
+        htmlOutput += \`
+          <form id="${formId}">
+            <h3>${scr.script} → ${scr.func}</h3>
+            ${inputs}
+            <button type="button" onclick="run_${formId}()">Uruchom</button>
+            <pre id="${formId}_output"></pre>
+          </form>\`;
+      `;
+
+              // JS do obsługi formularza
+              let jsHandler = `
+        window.run_${formId} = function(){
+          const form = document.getElementById("${formId}");
+          let data = {};
+          ${scr.params.map(p => `data["${p}"] = form.querySelector('[name="${p}"]').value;`).join("\n          ")}
+          fetch("/run-script",{method:"POST",headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({script:"${scr.script}",func:"${scr.func}",args:Object.values(data)})})
+            .then(r=>r.json())
+            .then(res=>{
+              document.querySelector('#app #${formId}_output').innerText = 
+                "stdout:\\n"+res.stdout+"\\n---\\nstderr:\\n"+res.stderr;
+            })
+            .catch(err=>{
+              document.querySelector('#app #${formId}_output').innerText = 
+                "error:\\n"+err.message;
+            });
+        }
+      `;
+              return html + jsHandler;
+            };
+          }
         });
       } catch (e) {
         console.error("Failed to load scripts", e);
       }
     }
     
-    // Load scripts after API blocks
-    loadScripts();
+    // Initialize all blocks and start the application
+    initializeBlocks();
 </script>
 </body>
 </html>

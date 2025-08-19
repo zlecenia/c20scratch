@@ -439,3 +439,114 @@ if __name__ == "__main__":
 
 ---
 
+
+
+Świetnie 🚀 — teraz dorzucimy **dynamiczne formularze w UI**.
+Chodzi o to, żeby użytkownik, zamiast wpisywać argumenty skryptów bezpośrednio w bloczkach Blockly, mógł wygenerować w widoku **formularz HTML** (np. inputy), a następnie po kliknięciu przycisku odpalić odpowiedni skrypt z parametrami.
+
+---
+
+## 🔑 Plan
+
+1. **Rozszerzamy bloki „Skrypty”**
+
+    * Zamiast tylko `fetch("/run-script")` z parametrami z bloczków,
+    * Blok wygeneruje formularz `<form>` z polami dla parametrów.
+
+2. **Dodajemy przycisk „Uruchom” w formularzu**
+
+    * Po kliknięciu JS zbiera wartości inputów,
+    * Wysyła `fetch('/run-script', body: {args:[…]})`.
+
+3. **Wynik** (stdout/stderr) pojawia się pod formularzem.
+
+---
+
+## 🔧 Zmodyfikowany frontend (`index.html` – fragment `loadScripts()`)
+
+```javascript
+async function loadScripts() {
+  const res = await fetch("/scripts.json");
+  const scripts = await res.json();
+  const scriptsCat = document.getElementById("scriptsCategory");
+
+  scripts.forEach(scr => {
+    const blockName = `form_${scr.func}_${scr.script.replace(/\W/g,"_")}`;
+    const blockEl = document.createElement("block");
+    blockEl.setAttribute("type", blockName);
+    scriptsCat.appendChild(blockEl);
+
+    Blockly.Blocks[blockName] = {
+      init: function() {
+        this.appendDummyInput().appendField("Formularz do " + scr.script + " → " + scr.func);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(290);
+      }
+    };
+
+    Blockly.JavaScript[blockName] = function() {
+      // Generowanie formularza HTML
+      let formId = `form_${scr.script}_${scr.func}`;
+      let inputs = scr.params.map(p => `<label>${p}: <input name="${p}"></label><br>`).join("");
+      let html = `
+        htmlOutput += \`
+          <form id="${formId}">
+            <h3>${scr.script} → ${scr.func}</h3>
+            ${inputs}
+            <button type="button" onclick="run_${formId}()">Uruchom</button>
+            <pre id="${formId}_output"></pre>
+          </form>\`;
+      `;
+
+      // JS do obsługi formularza
+      let jsHandler = `
+        window.run_${formId} = function(){
+          const form = document.getElementById("${formId}");
+          let data = {};
+          ${scr.params.map(p => `data["${p}"] = form.querySelector('[name="${p}"]').value;`).join("\n")}
+          fetch("/run-script",{method:"POST",headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({script:"${scr.script}",func:"${scr.func}",args:Object.values(data)})})
+            .then(r=>r.json())
+            .then(res=>{
+              document.getElementById("${formId}_output").innerText = 
+                "stdout:\\n"+res.stdout+"\\n---\\nstderr:\\n"+res.stderr;
+            });
+        }
+      `;
+      return html + jsHandler;
+    };
+  });
+}
+```
+
+---
+
+## 🔄 Efekt w przeglądarce
+
+1. Wstawiasz blok „Formularz do process\_data.py → main” do widoku.
+2. W podglądzie (`iframe`) pojawi się:
+
+```html
+<form id="form_process_data_py_main">
+  <h3>process_data.py → main</h3>
+  <label>input_file: <input name="input_file"></label><br>
+  <label>threshold: <input name="threshold"></label><br>
+  <button type="button" onclick="run_form_process_data_py_main()">Uruchom</button>
+  <pre id="form_process_data_py_main_output"></pre>
+</form>
+```
+
+3. Użytkownik wpisuje parametry (np. `data.csv`, `0.8`).
+4. Klik „Uruchom” → wysyła request do backendu → backend odpala skrypt i zwraca wynik.
+5. Wynik (`stdout` / `stderr`) pojawia się w `<pre>` pod formularzem.
+
+---
+
+## 🔮 Rozszerzenia
+
+* Dodanie typów parametrów (np. `number`, `file upload`) na podstawie analizy kodu.
+* Możliwość tworzenia **kompletnych widoków aplikacji** (np. strona `Analiza → formularz + wynik`).
+* Eksport do statycznego projektu (HTML + JSON z definicją workflow).
+
+
