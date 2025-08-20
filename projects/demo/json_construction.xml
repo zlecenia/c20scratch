@@ -1,0 +1,126 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <variables></variables>
+  <block type="add_view" id="main_view" x="100" y="100">
+    <field name="NAME">JSON Construction Examples</field>
+    <next>
+      <block type="ui_heading" id="title">
+        <field name="LEVEL">1</field>
+        <field name="TEXT">🔧 JSON Construction Demo</field>
+        <next>
+          <block type="ui_paragraph" id="intro">
+            <field name="TEXT">Learn how to build JSON objects and arrays using visual blocks.</field>
+            <next>
+              <block type="ui_heading" id="simple_title">
+                <field name="LEVEL">2</field>
+                <field name="TEXT">Simple JSON Object</field>
+                <next>
+                  <block type="ui_paragraph" id="simple_desc">
+                    <field name="TEXT">This demonstrates a basic user object:</field>
+                    <next>
+                      <block type="ui_code" id="simple_example">
+                        <field name="LANG">json</field>
+                        <field name="CODE">// This JSON will be constructed by blocks below:
+{
+  "name": "Jan Kowalski", 
+  "email": "jan@example.com",
+  "age": 30
+}</field>
+                        <next>
+                          <block type="api_post__api_users" id="simple_create">
+                            <value name="BODY">
+                              <block type="json_object" id="simple_user">
+                                <statement name="PROPERTIES">
+                                  <block type="json_property" id="name_prop">
+                                    <value name="KEY">
+                                      <block type="text" id="name_key">
+                                        <field name="TEXT">name</field>
+                                      </block>
+                                    </value>
+                                    <value name="VALUE">
+                                      <block type="text" id="name_val">
+                                        <field name="TEXT">Jan Kowalski</field>
+                                      </block>
+                                    </value>
+                                    <next>
+                                      <block type="json_property" id="email_prop">
+                                        <value name="KEY">
+                                          <block type="text" id="email_key">
+                                            <field name="TEXT">email</field>
+                                          </block>
+                                        </value>
+                                        <value name="VALUE">
+                                          <block type="text" id="email_val">
+                                            <field name="TEXT">jan@example.com</field>
+                                          </block>
+                                        </value>
+                                        <next>
+                                          <block type="json_property" id="age_prop">
+                                            <value name="KEY">
+                                              <block type="text" id="age_key">
+                                                <field name="TEXT">age</field>
+                                              </block>
+                                            </value>
+                                            <value name="VALUE">
+                                              <block type="math_number" id="age_val">
+                                                <field name="NUM">30</field>
+                                              </block>
+                                            </value>
+                                          </block>
+                                        </next>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </statement>
+                              </block>
+                            </value>
+                            <next>
+                              <block type="ui_divider" id="div1">
+                                <next>
+                                  <block type="ui_heading" id="complex_title">
+                                    <field name="LEVEL">2</field>
+                                    <field name="TEXT">Complex JSON Structure</field>
+                                    <next>
+                                      <block type="ui_paragraph" id="complex_desc">
+                                        <field name="TEXT">Here's how to build more complex nested structures:</field>
+                                        <next>
+                                          <block type="ui_code" id="complex_demo">
+                                            <field name="LANG">json</field>
+                                            <field name="CODE">// Example of complex JSON structures you can build:
+{
+  "user": {
+    "personal": {"name": "...", "email": "..."},
+    "preferences": {"theme": "dark", "notifications": true}
+  },
+  "metadata": {
+    "created": "2025-01-01",
+    "tags": ["admin", "premium"]
+  }
+}</field>
+                                            <next>
+                                              <block type="ui_alert" id="tips">
+                                                <field name="TYPE">info</field>
+                                                <field name="TEXT">💡 Tips: Use JSON blocks to construct request bodies for POST/PUT API calls. Combine multiple properties and nest objects as needed!</field>
+                                              </block>
+                                            </next>
+                                          </block>
+                                        </next>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </next>
+                              </block>
+                            </next>
+                          </block>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+</xml>

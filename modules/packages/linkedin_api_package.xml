@@ -1,0 +1,69 @@
+<module_package>
+  <metadata>
+    <name>LinkedIn API Integration</name>
+    <version>1.0.0</version>
+    <description>Complete LinkedIn API integration with profile and company data blocks</description>
+    <author>C20Scratch Team</author>
+    <type>public_api</type>
+    <requires_auth>true</requires_auth>
+  </metadata>
+  
+  <configuration>
+    <api_key_required>true</api_key_required>
+    <base_url>https://api.linkedin.com/v2</base_url>
+    <auth_type>bearer_token</auth_type>
+    <rate_limit>100</rate_limit>
+  </configuration>
+  
+  <blocks>
+    <block id="linkedin_profile" category="LinkedIn">
+      <name>Get LinkedIn Profile</name>
+      <description>Retrieve detailed LinkedIn profile information</description>
+      <method>GET</method>
+      <endpoint>/people/(id:{person-id})</endpoint>
+      <parameters>
+        <param name="person_id" type="string" required="true">LinkedIn Person ID</param>
+        <param name="fields" type="string" required="false">Fields to retrieve (optional)</param>
+      </parameters>
+      <example_usage>
+        Use this block to get profile data for LinkedIn users. 
+        Requires LinkedIn API access token.
+      </example_usage>
+    </block>
+    
+    <block id="linkedin_company" category="LinkedIn">
+      <name>Get Company Information</name>
+      <description>Retrieve LinkedIn company details</description>
+      <method>GET</method>
+      <endpoint>/companies/{id}</endpoint>
+      <parameters>
+        <param name="company_id" type="string" required="true">LinkedIn Company ID</param>
+      </parameters>
+      <example_usage>
+        Fetch company information including name, industry, size, and description.
+      </example_usage>
+    </block>
+    
+    <block id="linkedin_search" category="LinkedIn">
+      <name>Search LinkedIn Profiles</name>
+      <description>Search for LinkedIn profiles by keywords</description>
+      <method>GET</method>
+      <endpoint>/people-search</endpoint>
+      <parameters>
+        <param name="keywords" type="string" required="true">Search keywords</param>
+        <param name="count" type="number" required="false">Number of results (max 25)</param>
+      </parameters>
+      <example_usage>
+        Search for LinkedIn profiles using keywords like job titles, skills, or names.
+      </example_usage>
+    </block>
+  </blocks>
+  
+  <demo_project>
+    <name>LinkedIn Integration Demo</name>
+    <description>Complete example of LinkedIn API usage</description>
+    <xml_content>
+      <!-- This would contain a complete Blockly XML project demonstrating LinkedIn API usage -->
+    </xml_content>
+  </demo_project>
+</module_package>

@@ -1,0 +1,140 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <variables></variables>
+  <block type="add_view" id="main_view" x="100" y="100">
+    <field name="NAME">OpenAI API Demo</field>
+    <next>
+      <block type="ui_heading" id="title">
+        <field name="LEVEL">1</field>
+        <field name="TEXT">🤖 OpenAI API Integration Demo</field>
+        <next>
+          <block type="ui_alert" id="api_key_notice">
+            <field name="TYPE">warning</field>
+            <field name="TEXT">🔑 This demo requires OpenAI API key. Replace 'YOUR_OPENAI_KEY' in code with your actual API key from https://openai.com/api/</field>
+            <next>
+              <block type="ui_paragraph" id="intro">
+                <field name="TEXT">Explore the power of AI with OpenAI's GPT models, embeddings, and image generation. Activate the OpenAI module first!</field>
+                <next>
+                  <block type="ui_card" id="chat_card">
+                    <field name="TITLE">💬 Chat Completion</field>
+                    <next>
+                      <block type="ui_paragraph" id="chat_desc">
+                        <field name="TEXT">Generate AI responses using ChatGPT:</field>
+                        <next>
+                          <block type="openai_openai_chat" id="chat_demo">
+                            <value name="MODEL">
+                              <block type="text" id="model_text">
+                                <field name="TEXT">gpt-3.5-turbo</field>
+                              </block>
+                            </value>
+                            <value name="MESSAGES">
+                              <block type="json_array" id="messages_array">
+                                <statement name="ITEMS">
+                                  <block type="json_property" id="message_obj">
+                                    <value name="KEY">
+                                      <block type="text" id="role_key">
+                                        <field name="TEXT">role</field>
+                                      </block>
+                                    </value>
+                                    <value name="VALUE">
+                                      <block type="text" id="role_value">
+                                        <field name="TEXT">user</field>
+                                      </block>
+                                    </value>
+                                    <next>
+                                      <block type="json_property" id="content_prop">
+                                        <value name="KEY">
+                                          <block type="text" id="content_key">
+                                            <field name="TEXT">content</field>
+                                          </block>
+                                        </value>
+                                        <value name="VALUE">
+                                          <block type="text" id="content_value">
+                                            <field name="TEXT">Explain quantum computing in simple terms</field>
+                                          </block>
+                                        </value>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </statement>
+                              </block>
+                            </value>
+                            <value name="MAX_TOKENS">
+                              <block type="math_number" id="max_tokens">
+                                <field name="NUM">150</field>
+                              </block>
+                            </value>
+                            <next>
+                              <block type="ui_divider" id="div1">
+                                <next>
+                                  <block type="ui_card" id="embeddings_card">
+                                    <field name="TITLE">🔍 Text Embeddings</field>
+                                    <next>
+                                      <block type="ui_paragraph" id="embeddings_desc">
+                                        <field name="TEXT">Convert text to numerical vectors for semantic search:</field>
+                                        <next>
+                                          <block type="openai_openai_embeddings" id="embeddings_demo">
+                                            <value name="INPUT">
+                                              <block type="text" id="embedding_text">
+                                                <field name="TEXT">Artificial intelligence and machine learning</field>
+                                              </block>
+                                            </value>
+                                            <next>
+                                              <block type="ui_divider" id="div2">
+                                                <next>
+                                                  <block type="ui_card" id="usage_card">
+                                                    <field name="TITLE">📚 Usage Guide</field>
+                                                    <next>
+                                                      <block type="ui_code" id="usage_guide">
+                                                        <field name="LANG">markdown</field>
+                                                        <field name="CODE"># OpenAI API Usage
+
+## Setup Steps:
+1. **Get API Key**: Visit https://openai.com/api/
+2. **Create Account**: Sign up and get your API key
+3. **Set Budget**: Configure usage limits to avoid surprises
+4. **Replace Token**: Update 'YOUR_OPENAI_KEY' in generated code
+
+## API Models:
+- **GPT-3.5-Turbo**: Fast, cost-effective chat
+- **GPT-4**: More capable, higher cost
+- **text-embedding-ada-002**: Text embeddings
+- **DALL-E**: Image generation
+
+## Best Practices:
+- Cache responses to save costs
+- Use appropriate max_tokens limits
+- Implement error handling
+- Monitor usage and costs
+
+## Cost Estimates:
+- GPT-3.5-Turbo: ~$0.002/1K tokens
+- GPT-4: ~$0.03/1K tokens
+- Embeddings: ~$0.0001/1K tokens</field>
+                                                      </block>
+                                                    </next>
+                                                  </block>
+                                                </next>
+                                              </block>
+                                            </next>
+                                          </block>
+                                        </next>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </next>
+                              </block>
+                            </next>
+                          </block>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+</xml>

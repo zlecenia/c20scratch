@@ -1,0 +1,106 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <variables></variables>
+  <block type="add_view" id="main_view" x="100" y="100">
+    <field name="NAME">API Users CRUD Demo</field>
+    <next>
+      <block type="ui_heading" id="title">
+        <field name="LEVEL">1</field>
+        <field name="TEXT">Users API Demo</field>
+        <next>
+          <block type="ui_paragraph" id="description">
+            <field name="TEXT">Demonstration of CRUD operations with Users API endpoints</field>
+            <next>
+              <block type="ui_divider" id="div1">
+                <next>
+                  <block type="ui_heading" id="get_users_title">
+                    <field name="LEVEL">2</field>
+                    <field name="TEXT">Get All Users</field>
+                    <next>
+                      <block type="api_get__api_users" id="get_users_block">
+                        <value name="QUERY_LIMIT">
+                          <block type="math_number" id="limit_num">
+                            <field name="NUM">5</field>
+                          </block>
+                        </value>
+                        <value name="QUERY_PAGE">
+                          <block type="math_number" id="page_num">
+                            <field name="NUM">1</field>
+                          </block>
+                        </value>
+                        <next>
+                          <block type="ui_divider" id="div2">
+                            <next>
+                              <block type="ui_heading" id="get_user_title">
+                                <field name="LEVEL">2</field>
+                                <field name="TEXT">Get User by ID</field>
+                                <next>
+                                  <block type="api_get__api_users__user_id_" id="get_user_block">
+                                    <value name="PATH_USER_ID">
+                                      <block type="math_number" id="user_id_num">
+                                        <field name="NUM">123</field>
+                                      </block>
+                                    </value>
+                                    <next>
+                                      <block type="ui_divider" id="div3">
+                                        <next>
+                                          <block type="ui_heading" id="create_user_title">
+                                            <field name="LEVEL">2</field>
+                                            <field name="TEXT">Create New User</field>
+                                            <next>
+                                              <block type="api_post__api_users" id="create_user_block">
+                                                <value name="BODY">
+                                                  <block type="json_object" id="user_json">
+                                                    <statement name="PROPERTIES">
+                                                      <block type="json_property" id="name_prop">
+                                                        <value name="KEY">
+                                                          <block type="text" id="name_key">
+                                                            <field name="TEXT">name</field>
+                                                          </block>
+                                                        </value>
+                                                        <value name="VALUE">
+                                                          <block type="text" id="name_value">
+                                                            <field name="TEXT">Jan Kowalski</field>
+                                                          </block>
+                                                        </value>
+                                                        <next>
+                                                          <block type="json_property" id="email_prop">
+                                                            <value name="KEY">
+                                                              <block type="text" id="email_key">
+                                                                <field name="TEXT">email</field>
+                                                              </block>
+                                                            </value>
+                                                            <value name="VALUE">
+                                                              <block type="text" id="email_value">
+                                                                <field name="TEXT">jan@example.com</field>
+                                                              </block>
+                                                            </value>
+                                                          </block>
+                                                        </next>
+                                                      </block>
+                                                    </statement>
+                                                  </block>
+                                                </value>
+                                              </block>
+                                            </next>
+                                          </block>
+                                        </next>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </next>
+                              </block>
+                            </next>
+                          </block>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+</xml>

@@ -1,0 +1,101 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <variables></variables>
+  <block type="add_view" id="dashboard_view" x="100" y="100">
+    <field name="NAME">Dashboard</field>
+    <next>
+      <block type="ui_heading" id="main_title">
+        <field name="LEVEL">1</field>
+        <field name="TEXT">📊 Project Dashboard</field>
+        <next>
+          <block type="ui_row" id="stats_row">
+            <next>
+              <block type="ui_col" id="col1">
+                <field name="SIZE">4</field>
+                <next>
+                  <block type="ui_card" id="card1">
+                    <field name="TITLE">Users</field>
+                    <next>
+                      <block type="ui_heading" id="users_count">
+                        <field name="LEVEL">2</field>
+                        <field name="TEXT">1,234</field>
+                        <next>
+                          <block type="ui_paragraph" id="users_desc">
+                            <field name="TEXT">Active users this month</field>
+                          </block>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+  <block type="ui_col" id="col2" x="100" y="400">
+    <field name="SIZE">4</field>
+    <next>
+      <block type="ui_card" id="card2">
+        <field name="TITLE">Orders</field>
+        <next>
+          <block type="ui_heading" id="orders_count">
+            <field name="LEVEL">2</field>
+            <field name="TEXT">567</field>
+            <next>
+              <block type="ui_paragraph" id="orders_desc">
+                <field name="TEXT">Orders processed today</field>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+  <block type="ui_col" id="col3" x="100" y="600">
+    <field name="SIZE">4</field>
+    <next>
+      <block type="ui_card" id="card3">
+        <field name="TITLE">Revenue</field>
+        <next>
+          <block type="ui_heading" id="revenue_count">
+            <field name="LEVEL">2</field>
+            <field name="TEXT">$45,678</field>
+            <next>
+              <block type="ui_paragraph" id="revenue_desc">
+                <field name="TEXT">Total revenue this week</field>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+  <block type="ui_divider" id="divider1" x="100" y="800">
+    <next>
+      <block type="ui_heading" id="actions_title">
+        <field name="LEVEL">2</field>
+        <field name="TEXT">🚀 Quick Actions</field>
+        <next>
+          <block type="ui_button" id="btn1">
+            <field name="TEXT">Add New User</field>
+            <field name="ONCLICK">alert('Adding new user...')</field>
+            <next>
+              <block type="ui_button" id="btn2">
+                <field name="TEXT">View Reports</field>
+                <field name="ONCLICK">window.open('/reports')</field>
+                <next>
+                  <block type="ui_button" id="btn3">
+                    <field name="TEXT">Export Data</field>
+                    <field name="ONCLICK">alert('Exporting data...')</field>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+</xml>

@@ -1,0 +1,170 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <variables></variables>
+  <block type="add_view" id="main_view" x="100" y="100">
+    <field name="NAME">MCP Protocol Demo</field>
+    <next>
+      <block type="ui_heading" id="title">
+        <field name="LEVEL">1</field>
+        <field name="TEXT">🔧 MCP Protocol Integration Demo</field>
+        <next>
+          <block type="ui_alert" id="mcp_notice">
+            <field name="TYPE">info</field>
+            <field name="TEXT">🌐 MCP (Model Context Protocol) enables seamless integration between AI models and external tools. Ensure MCP server is running on localhost:3001</field>
+            <next>
+              <block type="ui_paragraph" id="intro">
+                <field name="TEXT">Discover and use MCP tools for enhanced AI capabilities. This protocol bridges AI models with real-world tools and data sources.</field>
+                <next>
+                  <block type="ui_card" id="discovery_card">
+                    <field name="TITLE">🔍 Tool Discovery</field>
+                    <next>
+                      <block type="ui_paragraph" id="discovery_desc">
+                        <field name="TEXT">First, discover what MCP tools are available:</field>
+                        <next>
+                          <block type="mcp_mcp_list_tools" id="list_tools">
+                            <next>
+                              <block type="ui_divider" id="div1">
+                                <next>
+                                  <block type="ui_card" id="health_card">
+                                    <field name="TITLE">❤️ System Health</field>
+                                    <next>
+                                      <block type="ui_paragraph" id="health_desc">
+                                        <field name="TEXT">Check MCP server connectivity:</field>
+                                        <next>
+                                          <block type="mcp_mcp_health" id="health_check">
+                                            <next>
+                                              <block type="ui_divider" id="div2">
+                                                <next>
+                                                  <block type="ui_card" id="resources_card">
+                                                    <field name="TITLE">📁 Resources</field>
+                                                    <next>
+                                                      <block type="ui_paragraph" id="resources_desc">
+                                                        <field name="TEXT">Access MCP-managed resources:</field>
+                                                        <next>
+                                                          <block type="mcp_mcp_get_resources" id="get_resources">
+                                                            <next>
+                                                              <block type="ui_divider" id="div3">
+                                                                <next>
+                                                                  <block type="ui_card" id="tool_call_card">
+                                                                    <field name="TITLE">⚡ Tool Execution</field>
+                                                                    <next>
+                                                                      <block type="ui_paragraph" id="tool_desc">
+                                                                        <field name="TEXT">Execute a specific MCP tool with parameters:</field>
+                                                                        <next>
+                                                                          <block type="mcp_mcp_call_tool" id="call_tool">
+                                                                            <value name="TOOL_NAME">
+                                                                              <block type="text" id="tool_name">
+                                                                                <field name="TEXT">file_reader</field>
+                                                                              </block>
+                                                                            </value>
+                                                                            <value name="ARGUMENTS">
+                                                                              <block type="json_object" id="tool_args">
+                                                                                <statement name="PROPERTIES">
+                                                                                  <block type="json_property" id="file_path_prop">
+                                                                                    <value name="KEY">
+                                                                                      <block type="text" id="file_key">
+                                                                                        <field name="TEXT">file_path</field>
+                                                                                      </block>
+                                                                                    </value>
+                                                                                    <value name="VALUE">
+                                                                                      <block type="text" id="file_value">
+                                                                                        <field name="TEXT">/path/to/example.txt</field>
+                                                                                      </block>
+                                                                                    </value>
+                                                                                  </block>
+                                                                                </statement>
+                                                                              </block>
+                                                                            </value>
+                                                                            <next>
+                                                                              <block type="ui_divider" id="div4">
+                                                                                <next>
+                                                                                  <block type="ui_card" id="setup_card">
+                                                                                    <field name="TITLE">⚙️ MCP Setup Guide</field>
+                                                                                    <next>
+                                                                                      <block type="ui_code" id="setup_instructions">
+                                                                                        <field name="LANG">markdown</field>
+                                                                                        <field name="CODE"># MCP Protocol Setup
+
+## What is MCP?
+Model Context Protocol (MCP) is an open standard that enables secure connections between AI applications and external data sources and tools.
+
+## Setup Steps:
+
+### 1. Install MCP Server
+```bash
+npm install -g @modelcontextprotocol/server-everything
+# or specific MCP server implementation
+```
+
+### 2. Start MCP Server
+```bash
+mcp-server --port 3001
+# Server should run on http://localhost:3001
+```
+
+### 3. Configure Tools
+MCP servers can provide various tools:
+- **File operations**: Read, write, list files
+- **Database access**: Query databases
+- **API integrations**: External service calls
+- **System tools**: OS-level operations
+
+### 4. Available Tools (Examples)
+- `file_reader`: Read file contents
+- `web_scraper`: Scrape web pages
+- `calculator`: Mathematical operations
+- `database_query`: SQL database queries
+
+### 5. Security
+- MCP runs in sandboxed environment
+- Tools require explicit permissions
+- Authentication handled by MCP server
+
+## Integration Benefits:
+- **Standardized**: Universal protocol for AI-tool communication
+- **Secure**: Built-in sandboxing and permissions
+- **Extensible**: Easy to add new tools and capabilities
+- **Composable**: Chain multiple tools together</field>
+                                                                                      </block>
+                                                                                    </next>
+                                                                                  </block>
+                                                                                </next>
+                                                                              </block>
+                                                                            </next>
+                                                                          </block>
+                                                                        </next>
+                                                                      </block>
+                                                                    </next>
+                                                                  </block>
+                                                                </next>
+                                                              </block>
+                                                            </next>
+                                                          </block>
+                                                        </next>
+                                                      </block>
+                                                    </next>
+                                                  </block>
+                                                </next>
+                                              </block>
+                                            </next>
+                                          </block>
+                                        </next>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </next>
+                              </block>
+                            </next>
+                          </block>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+</xml>

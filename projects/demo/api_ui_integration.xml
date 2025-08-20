@@ -1,0 +1,107 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <variables></variables>
+  <block type="add_view" id="main_view" x="100" y="100">
+    <field name="NAME">API + UI Integration</field>
+    <next>
+      <block type="ui_heading" id="title">
+        <field name="LEVEL">1</field>
+        <field name="TEXT">🔗 API & UI Integration Demo</field>
+        <next>
+          <block type="ui_paragraph" id="intro">
+            <field name="TEXT">This demo shows how to combine API calls with beautiful UI components.</field>
+            <next>
+              <block type="ui_card" id="users_card">
+                <field name="TITLE">👥 Users Management</field>
+                <next>
+                  <block type="ui_paragraph" id="users_desc">
+                    <field name="TEXT">Browse and manage users with our API:</field>
+                    <next>
+                      <block type="api_get__api_users" id="get_users">
+                        <value name="QUERY_LIMIT">
+                          <block type="math_number" id="limit_3">
+                            <field name="NUM">3</field>
+                          </block>
+                        </value>
+                        <value name="QUERY_PAGE">
+                          <block type="math_number" id="page_1">
+                            <field name="NUM">1</field>
+                          </block>
+                        </value>
+                        <next>
+                          <block type="ui_divider" id="div1">
+                            <next>
+                              <block type="ui_alert" id="success_alert">
+                                <field name="TYPE">success</field>
+                                <field name="TEXT">✅ User data loaded successfully!</field>
+                                <next>
+                                  <block type="ui_heading" id="create_section">
+                                    <field name="LEVEL">3</field>
+                                    <field name="TEXT">➕ Create New User</field>
+                                    <next>
+                                      <block type="ui_container" id="form_container">
+                                        <next>
+                                          <block type="ui_input" id="name_input">
+                                            <field name="PLACEHOLDER">Enter user name</field>
+                                            <field name="TYPE">text</field>
+                                            <next>
+                                              <block type="ui_input" id="email_input">
+                                                <field name="PLACEHOLDER">Enter email address</field>
+                                                <field name="TYPE">email</field>
+                                                <next>
+                                                  <block type="ui_button" id="create_btn">
+                                                    <field name="TEXT">Create User</field>
+                                                    <field name="ONCLICK">
+// Get input values
+const name = document.querySelector('input[placeholder="Enter user name"]').value;
+const email = document.querySelector('input[placeholder="Enter email address"]').value;
+
+// Create user via API
+fetch('/api/users', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({name, email})
+})
+.then(r => r.json())
+.then(data => alert('User created: ' + JSON.stringify(data)))
+.catch(err => alert('Error: ' + err));
+                                                    </field>
+                                                    <next>
+                                                      <block type="ui_spacer" id="spacer1">
+                                                        <next>
+                                                          <block type="ui_code" id="api_code">
+                                                            <field name="LANG">json</field>
+                                                            <field name="CODE">{
+  "info": "This demo combines multiple API calls with interactive UI",
+  "features": ["GET users with pagination", "POST new user", "Responsive design"],
+  "tech_stack": ["Blockly visual blocks", "REST API", "JSON", "HTML/CSS"]
+}</field>
+                                                          </block>
+                                                        </next>
+                                                      </block>
+                                                    </next>
+                                                  </block>
+                                                </next>
+                                              </block>
+                                            </next>
+                                          </block>
+                                        </next>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </next>
+                              </block>
+                            </next>
+                          </block>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+</xml>

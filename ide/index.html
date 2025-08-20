@@ -2,19 +2,28 @@
 <html>
 <head>
     <meta charset="UTF-8" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E🧩%3C/text%3E%3C/svg%3E" />
     <script src="https://unpkg.com/blockly/blockly.min.js"></script>
+    <!-- CodeMirror 5 for source editor -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
 </head>
 <body>
 <h2>IDE z OpenAPI → automatyczne bloki</h2>
 <div id="controls" style="margin: 8px 0;">
   <button id="runBtn">Run Preview</button>
+  <button id="renderTestBtn" title="Render a test HTML with quotes/newlines/backticks">Render Test</button>
   <label style="margin-left:12px;">
     <input type="checkbox" id="autoRunToggle" /> Auto-run on changes
   </label>
   <span id="autoRunStatus" style="margin-left:8px;color:#666;"></span>
   <!-- The controls trigger runCode() and an optional debounced auto-run -->
   <!-- Manual test UI inside the preview remains available for generator diagnostics -->
-  
+
   <input id="projectName" placeholder="project name" style="margin-left:12px;" />
   <button id="saveProjectBtn">Save Project</button>
   <select id="projectList" style="margin-left:6px;"></select>
@@ -33,15 +42,51 @@
   <button id="uploadBtn">Upload</button>
   <select id="uploadsList" style="margin-left:6px; min-width:140px"></select>
   <button id="openUploadBtn">Open File</button>
+  <span style="margin:0 8px;">|</span>
+  <label>
+    <input type="checkbox" id="autosaveToggle" checked /> Autosave
+  </label>
+  <span id="autosaveStatus" style="margin-left:8px;color:#666;"></span>
   <button id="loadXmlToWorkspaceBtn">Load XML to Workspace</button>
+  <span style="margin:0 8px;">|</span>
+  <label>OpenAPI URL:</label>
+  <input id="openapiUrl" style="min-width:280px" value="https://petstore.swagger.io/v2/swagger.json" />
+  <button id="reloadApiBtn" title="Reload API blocks from OpenAPI">Reload API</button>
+  <span style="margin:0 8px;">|</span>
+  <button id="moduleManagerBtn" title="Manage Modules & Packages">📦 Modules</button>
+  <input id="moduleUpload" type="file" accept=".xml" style="display:none" />
+  <button id="uploadModuleBtn" title="Upload Module Package">Upload Module</button>
 </div>
 <div id="mainSplit" style="display:flex; gap:8px; align-items:stretch;">
   <div id="blockCol" style="flex:1; min-width:0;">
     <div id="blocklyDiv" style="height: 500px; width: 100%;"></div>
   </div>
-  <iframe id="preview" style="flex:1; min-width:0; height: 500px; border:1px solid #ccc;"></iframe>
+  <iframe id="preview" sandbox="allow-scripts" style="flex:1; min-width:0; height: 500px; border:1px solid #ccc;"></iframe>
   <div id="codeCol" style="flex:1; min-width:0;">
     <textarea id="codeEditor" spellcheck="false" style="width:100%; height:500px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size:12px; line-height:1.4; border:1px solid #ccc; border-radius:4px; padding:8px;"></textarea>
+  </div>
+</div>
+
+<!-- Module Manager Modal -->
+<div id="moduleModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000;">
+  <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:white; padding:20px; border-radius:8px; max-width:800px; width:90%; max-height:80%; overflow-y:auto;">
+    <h2>📦 Module & Package Manager</h2>
+    <div style="margin-bottom:15px;">
+      <button id="closeModalBtn" style="float:right;">✕ Close</button>
+      <button id="refreshModulesBtn">🔄 Refresh</button>
+      <button id="uploadModuleModalBtn">📤 Upload Package</button>
+    </div>
+    <div style="clear:both;"></div>
+    
+    <h3>Available Modules</h3>
+    <div id="modulesList" style="max-height:400px; overflow-y:auto;">
+      <!-- Modules will be loaded here -->
+    </div>
+    
+    <h3>Active Modules</h3>
+    <div id="activeModulesList">
+      <!-- Active modules will be shown here -->
+    </div>
   </div>
 </div>
 
@@ -68,6 +113,13 @@
         <block type="ui_svg_file"></block>
         <block type="ui_xml_file"></block>
     </category>
+    <category name="Values" colour="160">
+        <block type="text"></block>
+        <block type="math_number"></block>
+        <block type="json_object"></block>
+        <block type="json_array"></block>
+        <block type="json_property"></block>
+    </category>
     <category id="apiCategory" name="API" colour="230"></category>
     <category id="scriptsCategory" name="Scripts" colour="290"></category>
 </xml>
@@ -90,8 +142,41 @@
         try { const t = document.getElementById('autoRunToggle'); if (t) { t.checked = true; } } catch(e){}
         const runBtn = document.getElementById('runBtn');
         if (runBtn) runBtn.addEventListener('click', runCode);
+        const renderTestBtn = document.getElementById('renderTestBtn');
+        if (renderTestBtn) renderTestBtn.addEventListener('click', runRenderTest);
+        const reloadApiBtn = document.getElementById('reloadApiBtn');
+        if (reloadApiBtn) reloadApiBtn.addEventListener('click', async ()=>{
+            try { await generateApiBlocks(); } catch(e){ console.error('Reload API failed', e); }
+        });
+        const openapiInput = document.getElementById('openapiUrl');
+        if (openapiInput) openapiInput.addEventListener('keydown', async (e)=>{
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                try { await generateApiBlocks(); } catch(err){ console.error('Reload API failed', err); }
+            }
+        });
+
+        // Module Management
+        const moduleManagerBtn = document.getElementById('moduleManagerBtn');
+        if (moduleManagerBtn) moduleManagerBtn.addEventListener('click', openModuleManager);
+        
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        if (closeModalBtn) closeModalBtn.addEventListener('click', closeModuleManager);
+        
+        const refreshModulesBtn = document.getElementById('refreshModulesBtn');
+        if (refreshModulesBtn) refreshModulesBtn.addEventListener('click', loadAvailableModules);
+        
+        const uploadModuleBtn = document.getElementById('uploadModuleBtn');
+        const moduleUpload = document.getElementById('moduleUpload');
+        if (uploadModuleBtn) uploadModuleBtn.addEventListener('click', ()=> moduleUpload.click());
+        if (moduleUpload) moduleUpload.addEventListener('change', uploadModuleFile);
         const autoToggle = document.getElementById('autoRunToggle');
         const autoStatus = document.getElementById('autoRunStatus');
+        // Hide Auto-run UI per requirement
+        try {
+            autoToggle?.closest('label')?.setAttribute('style','display:none');
+            if (autoStatus) autoStatus.style.display = 'none';
+        } catch(e){}
         function updateAutoStatus(){ if (autoStatus) autoStatus.textContent = autoRunEnabled ? '(auto-run enabled)' : '(auto-run disabled)'; }
         if (autoToggle) {
             autoRunEnabled = true;
@@ -102,38 +187,126 @@
                 if (autoRunEnabled) runCodeDebounced();
             });
         }
-        // Auto-run on workspace changes (debounced)
-        workspace.addChangeListener(function(){ if (autoRunEnabled) runCodeDebounced(); });
+        // Auto-run on workspace changes (debounced) and schedule autosave
+        workspace.addChangeListener(function(e){
+            if (autoRunEnabled) runCodeDebounced();
+            if (!e || e.type !== Blockly.Events.SELECTED) scheduleAutosave();
+        });
 
-        // Code editor wiring (3rd pane)
-        const codeEditor = document.getElementById('codeEditor');
+        // Code editor wiring (3rd pane) with CodeMirror
+        const codeEditorTextarea = document.getElementById('codeEditor');
+        let cm = null;
+        if (window.CodeMirror && codeEditorTextarea) {
+            cm = CodeMirror.fromTextArea(codeEditorTextarea, {
+                lineNumbers: true,
+                mode: 'htmlmixed',
+                indentUnit: 2,
+                tabSize: 2,
+                viewportMargin: Infinity
+            });
+            try { cm.setSize('100%', '500px'); } catch(e){}
+        }
+
+        function getEditorValue(){ return cm ? cm.getValue() : (codeEditorTextarea ? codeEditorTextarea.value : ''); }
+        function setEditorValue(v){ if (cm) cm.setValue(v); else if (codeEditorTextarea) codeEditorTextarea.value = v; }
+        function getCaretIndex(){ return cm ? cm.indexFromPos(cm.getCursor()) : ((codeEditorTextarea && codeEditorTextarea.selectionStart) || 0); }
+        function setCaretToIndex(idx){
+            if (cm) { const pos = cm.posFromIndex(idx); cm.focus(); cm.setCursor(pos); cm.scrollIntoView({from:pos,to:pos}, 100); }
+            else if (codeEditorTextarea) { codeEditorTextarea.focus(); codeEditorTextarea.setSelectionRange(idx, idx); }
+        }
+
+        // ---- Blockly XML compatibility helpers (v12+ moved XML utils) ----
+        function xmlTextToDom(text){
+            try {
+                if (Blockly && Blockly.utils && Blockly.utils.xml && Blockly.utils.xml.textToDom) {
+                    return Blockly.utils.xml.textToDom(text);
+                }
+                if (Blockly && Blockly.Xml && Blockly.Xml.textToDom) {
+                    return Blockly.Xml.textToDom(text);
+                }
+            } catch(e) { console.warn('xmlTextToDom fallback', e); }
+            try {
+                const doc = new DOMParser().parseFromString(text, 'text/xml');
+                return doc && (doc.documentElement || doc);
+            } catch(e){ return null; }
+        }
+        function xmlDomToText(dom){
+            try {
+                if (Blockly && Blockly.utils && Blockly.utils.xml && Blockly.utils.xml.domToText) {
+                    return Blockly.utils.xml.domToText(dom);
+                }
+                if (Blockly && Blockly.Xml && Blockly.Xml.domToText) {
+                    return Blockly.Xml.domToText(dom);
+                }
+            } catch(e) { console.warn('xmlDomToText fallback', e); }
+            try { return new XMLSerializer().serializeToString(dom); } catch(e){ return ''; }
+        }
+
+        // Shim: Restore legacy Blockly.Xml.* methods if missing by forwarding to utils.xml
+        try {
+            if (window.Blockly) {
+                window.Blockly.Xml = window.Blockly.Xml || {};
+                if (!window.Blockly.Xml.textToDom && window.Blockly.utils?.xml?.textToDom) {
+                    window.Blockly.Xml.textToDom = function(t){ return window.Blockly.utils.xml.textToDom(t); };
+                }
+                if (!window.Blockly.Xml.domToText && window.Blockly.utils?.xml?.domToText) {
+                    window.Blockly.Xml.domToText = function(d){ return window.Blockly.utils.xml.domToText(d); };
+                }
+            }
+        } catch(e){ console.warn('Blockly XML shim failed', e); }
+
+        // Write HTML into the preview iframe via Blob URL to avoid srcdoc escaping and keep sandbox strict
+        function writeIframeHTML(html){
+            const iframe = document.getElementById('preview');
+            if (!iframe) return;
+            try {
+                // Revoke previous blob URL if any
+                if (window.__previewBlobURL) {
+                    try { URL.revokeObjectURL(window.__previewBlobURL); } catch(_){ }
+                    window.__previewBlobURL = null;
+                }
+                const blob = new Blob([html], {type: 'text/html;charset=utf-8'});
+                const url = URL.createObjectURL(blob);
+                window.__previewBlobURL = url;
+                iframe.src = url;
+            } catch(e){ console.error('Preview render failed', e); }
+        }
+
         function updatePreviewFromEditor(){
-            if (!codeEditor) return;
-            const code = codeEditor.value;
-            const iframeContent = buildIframeHTML(code);
-            window.lastIframeHTML = iframeContent;
-            document.getElementById('preview').srcdoc = iframeContent;
+            const html = getEditorValue();
+            window.lastIframeHTML = html;
+            writeIframeHTML(html);
         }
         const updatePreviewFromEditorDebounced = debounce(updatePreviewFromEditor, 300);
-        codeEditor?.addEventListener('input', updatePreviewFromEditorDebounced);
-        codeEditor?.addEventListener('keyup', caretToBlocklyHighlight);
-        codeEditor?.addEventListener('click', caretToBlocklyHighlight);
+        if (cm) {
+            cm.on('change', updatePreviewFromEditorDebounced);
+            cm.on('cursorActivity', caretToBlocklyHighlight);
+        } else {
+            codeEditorTextarea?.addEventListener('input', updatePreviewFromEditorDebounced);
+            codeEditorTextarea?.addEventListener('keyup', caretToBlocklyHighlight);
+            codeEditorTextarea?.addEventListener('click', caretToBlocklyHighlight);
+        }
 
         function caretToBlocklyHighlight(){
-            if (!codeEditor) return;
-            const pos = codeEditor.selectionStart || 0;
-            const text = codeEditor.value;
-            const id = findLastMarkerId(text, pos);
+            const pos = getCaretIndex();
+            const text = getEditorValue();
+            const id = findLastEditorBlockId(text, pos);
             if (id) {
                 try { workspace.highlightBlock(id); } catch(e){}
             }
         }
-        function findLastMarkerId(text, upTo){
-            const re = /\/\*@@B:([A-Za-z0-9_-]+):(S|E)@@\*\//g;
+        function findLastEditorBlockId(text, upTo){
+            // Prefer HTML data-bid markers in final HTML
+            const htmlRe = /data-bid="([A-Za-z0-9_-]+)"/g;
             let m, lastId = null;
-            re.lastIndex = 0;
             const slice = text.slice(0, upTo);
-            while ((m = re.exec(slice)) !== null) {
+            while ((m = htmlRe.exec(slice)) !== null) {
+                lastId = m[1];
+            }
+            if (lastId) return lastId;
+            // Fallback: legacy JS comment markers if editor shows JS
+            const jsRe = /\/\*@@B:([A-Za-z0-9_-]+):(S|E)@@\*\//g;
+            while ((m = jsRe.exec(slice)) !== null) {
                 lastId = m[1];
             }
             return lastId;
@@ -141,17 +314,16 @@
         // Scroll code editor to selected block in Blockly
         workspace.addChangeListener(function(e){
             try {
-                if (e && e.type === Blockly.Events.SELECTED && e.newElementId && codeEditor) {
+                if (e && e.type === Blockly.Events.SELECTED && e.newElementId) {
                     const id = e.newElementId;
-                    const pattern = new RegExp("/\\*@@B:"+id+":S@@\\*/");
-                    const idx = codeEditor.value.search(pattern);
+                    // Find position of data-bid="id" in the editor's HTML
+                    const text = getEditorValue();
+                    const idx = text.indexOf('data-bid="'+id+'"');
                     if (idx >= 0) {
-                        codeEditor.focus();
-                        codeEditor.setSelectionRange(idx, idx);
-                        // naive scroll-into-view
-                        const linesUpTo = codeEditor.value.slice(0, idx).split('\n').length;
-                        codeEditor.scrollTop = Math.max(0, (linesUpTo - 5) * 16);
+                        setCaretToIndex(idx);
                     }
+                    // Send highlight request to preview iframe
+                    try { document.getElementById('preview')?.contentWindow?.postMessage({type:'highlight', blockId: id}, '*'); } catch(_){}
                 }
             } catch(err){}
         });
@@ -160,6 +332,89 @@
         const projectStatus = document.getElementById('projectStatus');
         function setPStatus(msg){ if (projectStatus) projectStatus.textContent = msg || ''; }
         function getProjectName(){ const el = document.getElementById('projectName'); return (el && el.value && el.value.trim()) ? el.value.trim() : 'project'; }
+        // ---- Demo projects ----
+        async function refreshDemoList(){
+            try {
+                const res = await fetch('/projects/demos');
+                const data = await res.json();
+                const sel = document.getElementById('demoList');
+                if (!sel) return;
+                sel.innerHTML = '';
+                (data.xml || []).forEach(n=>{
+                    const opt = document.createElement('option');
+                    opt.value = n; opt.textContent = n; sel.appendChild(opt);
+                });
+            } catch(e){ console.warn('Demo list load failed', e); }
+        }
+        async function loadSelectedDemo(){
+            const sel = document.getElementById('demoList');
+            const n = sel && sel.value;
+            if (!n) { setPStatus('Select demo'); return; }
+            try {
+                const res = await fetch('/projects/demo/'+encodeURIComponent(n));
+                const data = await res.json();
+                if (data && data.xml){
+                    workspace.clear();
+                    const dom = xmlTextToDom(data.xml);
+                    Blockly.Xml.domToWorkspace(dom, workspace);
+                    setDefaultProjectNameTimestamp(true);
+                    setPStatus('Loaded demo: '+n);
+                    if (autoRunEnabled) runCodeDebounced();
+                    scheduleAutosave();
+                }
+            } catch(e){ console.error('Load demo failed', e); setPStatus('Load demo failed'); }
+        }
+        // ---- Autosave ----
+        let autosaveEnabled = true;
+        const AUTOSAVE_DELAY_MS = 10000; // 10s idle
+        let autosaveTimer = null;
+        let lastSavedXML = '';
+        const autosaveStatus = document.getElementById('autosaveStatus');
+        function updateAutosaveStatus(extra){
+            const base = autosaveEnabled ? 'Autosave: ON' : 'Autosave: OFF';
+            const tail = extra ? ' · '+extra : '';
+            if (autosaveStatus) autosaveStatus.textContent = base + tail;
+        }
+        function autosaveProjectName(base){ return `${base}-autosave-${timestampString()}`; }
+        function scheduleAutosave(){
+            if (!autosaveEnabled) return;
+            if (autosaveTimer) clearTimeout(autosaveTimer);
+            autosaveTimer = setTimeout(autosaveNow, AUTOSAVE_DELAY_MS);
+            updateAutosaveStatus('pending…');
+        }
+        async function autosaveNow(){
+            try {
+                if (!autosaveEnabled) return;
+                const xmlDom = Blockly.Xml.workspaceToDom(workspace);
+                const xmlText = Blockly.Xml.domToText(xmlDom);
+                if (xmlText === lastSavedXML) { updateAutosaveStatus('no changes'); return; }
+                const base = getProjectName();
+                const name = autosaveProjectName(base);
+                const res = await fetch('/projects/save',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, xml: xmlText})});
+                const data = await res.json();
+                if (data.ok) {
+                    lastSavedXML = xmlText;
+                    const t = new Date().toLocaleTimeString();
+                    updateAutosaveStatus('saved '+t);
+                } else {
+                    updateAutosaveStatus('error');
+                    console.error('Autosave error', data);
+                }
+            } catch(e){
+                updateAutosaveStatus('failed');
+                console.error('Autosave failed', e);
+            }
+        }
+        // Autosave toggle
+        (function(){
+            const tgl = document.getElementById('autosaveToggle');
+            if (tgl) {
+                autosaveEnabled = true;
+                tgl.checked = true;
+                tgl.addEventListener('change', ()=>{ autosaveEnabled = !!tgl.checked; updateAutosaveStatus(); if (autosaveEnabled) scheduleAutosave(); });
+            }
+            updateAutosaveStatus();
+        })();
         async function refreshProjectList(){
             try {
                 const res = await fetch('/projects');
@@ -177,7 +432,7 @@
         async function saveProject(){
             try {
                 const xmlDom = Blockly.Xml.workspaceToDom(workspace);
-                const xmlText = Blockly.Xml.domToText(xmlDom);
+                const xmlText = xmlDomToText(xmlDom);
                 const name = getProjectName();
                 const res = await fetch('/projects/save',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, xml: xmlText})});
                 const data = await res.json();
@@ -193,10 +448,11 @@
                 const data = await res.json();
                 if (data.xml){
                     workspace.clear();
-                    const dom = Blockly.Xml.textToDom(data.xml);
+                    const dom = xmlTextToDom(data.xml);
                     Blockly.Xml.domToWorkspace(dom, workspace);
                     setPStatus('Loaded: '+n);
                     if (autoRunEnabled) runCodeDebounced();
+                    scheduleAutosave();
                 } else { setPStatus('Load error'); console.error(data); }
             } catch(e){ setPStatus('Load failed'); console.error(e); }
         }
@@ -273,7 +529,7 @@
             try {
                 const res = await fetch('/uploads/'+encodeURIComponent(fn));
                 const xmlText = await res.text();
-                const dom = Blockly.Xml.textToDom(xmlText);
+                const dom = xmlTextToDom(xmlText);
                 workspace.clear();
                 Blockly.Xml.domToWorkspace(dom, workspace);
                 setPStatus('Workspace loaded from: '+fn);
@@ -288,7 +544,7 @@
             const sel = document.getElementById('projectList');
             const name = sel && sel.value; if (!name) return;
             try { const res = await fetch('/projects/'+encodeURIComponent(name)); const data = await res.json();
-                if (data && data.xml){ const dom = Blockly.Xml.textToDom(data.xml); workspace.clear(); Blockly.Xml.domToWorkspace(dom, workspace); setPStatus('Loaded project: '+name); setDefaultProjectNameTimestamp(true); if (autoRunEnabled) runCodeDebounced(); }
+                if (data && data.xml){ const dom = xmlTextToDom(data.xml); workspace.clear(); Blockly.Xml.domToWorkspace(dom, workspace); setPStatus('Loaded project: '+name); setDefaultProjectNameTimestamp(true); if (autoRunEnabled) runCodeDebounced(); }
             } catch(e){ console.error(e); setPStatus('Load project failed'); }
         });
         document.getElementById('loadDemoBtn')?.addEventListener('click', loadSelectedDemo);
@@ -296,24 +552,82 @@
     // Block definitions will be handled in initializeBlocks()
 
     // --- Funkcja: Generowanie bloków API z OpenAPI ---
-    async function generateApiBlocks() {
-        const spec = await loadOpenAPI("https://petstore.swagger.io/v2/swagger.json");
+    async function generateApiBlocks(url) {
+        const src = (url || document.getElementById('openapiUrl')?.value || '').trim() || "https://petstore.swagger.io/v2/swagger.json";
+        const spec = await loadOpenAPI(src);
         const apiCategory = document.getElementById("apiCategory");
+
+        // Clear previous API blocks from toolbox category
+        if (apiCategory) {
+            while (apiCategory.firstChild) apiCategory.removeChild(apiCategory.firstChild);
+        }
+
+        // Determine base URL (supports OpenAPI v2 and v3). Fallback to current origin.
+        let baseUrl = '';
+        try {
+            const isV3 = !!spec.openapi;
+            if (isV3) {
+                baseUrl = (spec.servers && spec.servers[0] && spec.servers[0].url) || '';
+            } else {
+                const scheme = (spec.schemes && spec.schemes[0]) || 'http';
+                const host = spec.host || '';
+                const basePath = spec.basePath || '';
+                baseUrl = (host ? `${scheme}://${host}` : '') + basePath;
+            }
+            // Normalize relative baseUrl to absolute using parent's origin
+            if (!baseUrl) baseUrl = window.location.origin;
+            if (/^\/.*/.test(baseUrl)) {
+                baseUrl = window.location.origin + baseUrl;
+            } else if (!/^https?:\/\//i.test(baseUrl)) {
+                baseUrl = window.location.origin.replace(/\/$/, '') + '/' + baseUrl.replace(/^\//, '');
+            }
+            // Remove trailing slash for clean concatenation
+            baseUrl = baseUrl.replace(/\/$/, '');
+        } catch(e) { console.warn('Failed to resolve baseUrl from OpenAPI spec; using origin', e); baseUrl = window.location.origin; }
 
         Object.entries(spec.paths).forEach(([path, methods]) => {
             Object.entries(methods).forEach(([method, details]) => {
                 const blockName = `api_${method}_${path.replace(/[\/{}]/g, "_")}`;
                 const summary = details.summary || `${method.toUpperCase()} ${path}`;
+                const parameters = details.parameters || [];
 
                 // Dodaj blok do toolbox
                 const blockEl = document.createElement("block");
                 blockEl.setAttribute("type", blockName);
                 apiCategory.appendChild(blockEl);
 
-                // Definicja bloku
+                // Parse parameters
+                const pathParams = parameters.filter(p => p.in === 'path');
+                const queryParams = parameters.filter(p => p.in === 'query');
+                const bodyParam = parameters.find(p => p.in === 'body');
+                const hasBody = method.toLowerCase() === 'post' || method.toLowerCase() === 'put';
+
+                // Definicja bloku z parametrami
                 Blockly.Blocks[blockName] = {
                     init: function() {
                         this.appendDummyInput().appendField(summary);
+                        
+                        // Add path parameter inputs
+                        pathParams.forEach(param => {
+                            this.appendValueInput(`PATH_${param.name.toUpperCase()}`)
+                                .appendField(param.name + " (path):")
+                                .setCheck(["String", "Number"]);
+                        });
+
+                        // Add query parameter inputs
+                        queryParams.forEach(param => {
+                            this.appendValueInput(`QUERY_${param.name.toUpperCase()}`)
+                                .appendField(param.name + " (query):")
+                                .setCheck(["String", "Number"]);
+                        });
+
+                        // Add body input for POST/PUT
+                        if (hasBody && bodyParam) {
+                            this.appendValueInput("BODY")
+                                .appendField("Request Body (JSON):")
+                                .setCheck("String");
+                        }
+
                         this.setPreviousStatement(true, null);
                         this.setNextStatement(true, null);
                         this.setColour(230);
@@ -322,37 +636,508 @@
 
                 // Kod JS z bloku (typed generator API with legacy fallback)
                 const jsGen = Blockly.JavaScript;
+                const generateCode = function(block, generator) {
+                    let actualPath = path;
+                    const queryParts = [];
+                    let bodyCode = '';
+
+                    // Handle path parameters
+                    pathParams.forEach(param => {
+                        const inputName = `PATH_${param.name.toUpperCase()}`;
+                        const value = generator ?
+                            (generator.valueToCode(block, inputName, generator.ORDER_NONE) || `"${param.default || ''}"`) :
+                            (Blockly.JavaScript.valueToCode(block, inputName, Blockly.JavaScript.ORDER_NONE) || `"${param.default || ''}"`);
+                        actualPath = actualPath.replace(`{${param.name}}`, '" + ' + value + ' + "');
+                    });
+
+                    // Handle query parameters
+                    queryParams.forEach(param => {
+                        const inputName = `QUERY_${param.name.toUpperCase()}`;
+                        const value = generator ?
+                            (generator.valueToCode(block, inputName, generator.ORDER_NONE)) :
+                            (Blockly.JavaScript.valueToCode(block, inputName, Blockly.JavaScript.ORDER_NONE));
+                        if (value) {
+                            queryParts.push(`${param.name}=" + encodeURIComponent(${value}) + "`);
+                        }
+                    });
+
+                    // Build URL with query string
+                    let fullUrl = `"${baseUrl}${actualPath}"`;
+                    if (queryParts.length > 0) {
+                        fullUrl += ' + "?" + "' + queryParts.join(' + "&" + "') + '"';
+                    }
+
+                    // Handle request body for POST/PUT
+                    if (hasBody && bodyParam) {
+                        const bodyValue = generator ?
+                            (generator.valueToCode(block, 'BODY', generator.ORDER_NONE) || '"{}"') :
+                            (Blockly.JavaScript.valueToCode(block, 'BODY', Blockly.JavaScript.ORDER_NONE) || '"{}"');
+                        bodyCode = `, {
+                            method: "${method.toUpperCase()}",
+                            headers: {"Content-Type": "application/json"},
+                            body: ${bodyValue}
+                        }`;
+                    } else if (method.toLowerCase() !== 'get') {
+                        bodyCode = `, {method: "${method.toUpperCase()}"}`;
+                    }
+
+                    return `
+              htmlOutput += '<pre id="${blockName}">Ładowanie...</pre>';
+              fetch(${fullUrl}${bodyCode})
+                .then(r => r.json())
+                .then(data => {
+                  document.getElementById("${blockName}").innerText = JSON.stringify(data,null,2);
+                })
+                .catch(err => {
+                  document.getElementById("${blockName}").innerText = "Error: " + err.message;
+                });
+            `;
+                };
+
                 if (jsGen && jsGen.forBlock) {
-                    jsGen.forBlock[blockName] = function(block, generator) {
-                        return `
-              htmlOutput += '<pre id="${blockName}">Ładowanie...</pre>';
-              fetch("${spec.schemes?.[0] || "https"}://${spec.host}${spec.basePath}${path}")
-                .then(r => r.json())
-                .then(data => {
-                  document.getElementById("${blockName}").innerText = JSON.stringify(data,null,2);
-                });
-            `;
-                    };
+                    jsGen.forBlock[blockName] = generateCode;
                 } else {
-                    Blockly.JavaScript[blockName] = function() {
-                        return `
-              htmlOutput += '<pre id="${blockName}">Ładowanie...</pre>';
-              fetch("${spec.schemes?.[0] || "https"}://${spec.host}${spec.basePath}${path}")
-                .then(r => r.json())
-                .then(data => {
-                  document.getElementById("${blockName}").innerText = JSON.stringify(data,null,2);
-                });
-            `;
-                    };
+                    Blockly.JavaScript[blockName] = generateCode;
                 }
             });
         });
+
+        // Refresh toolbox so new API blocks appear - with better error handling
+        try { 
+            const toolboxElement = document.getElementById('toolbox');
+            if (toolboxElement && workspace) {
+                workspace.updateToolbox(toolboxElement); 
+            }
+        } catch(e) { 
+            console.warn('Toolbox update failed:', e); 
+            // Fallback: try to refresh workspace without error
+            try {
+                if (workspace && workspace.refreshToolboxSelection) {
+                    workspace.refreshToolboxSelection();
+                }
+            } catch(e2) {
+                console.warn('Toolbox refresh fallback failed:', e2);
+            }
+        }
     }
 
     async function loadOpenAPI(url) {
         const res = await fetch(url);
         return res.json();
     }
+
+    // Module Management Functions
+    let activeModules = new Set(['ui', 'values']); // Core modules always active
+    let availableModules = [];
+
+    async function openModuleManager() {
+        document.getElementById('moduleModal').style.display = 'block';
+        await loadAvailableModules();
+        updateActiveModulesList();
+    }
+
+    function closeModuleManager() {
+        document.getElementById('moduleModal').style.display = 'none';
+    }
+
+    async function loadAvailableModules() {
+        try {
+            const response = await fetch('/modules/list');
+            const data = await response.json();
+            availableModules = data.modules || [];
+            renderModulesList();
+        } catch (e) {
+            console.error('Failed to load modules:', e);
+        }
+    }
+
+    function renderModulesList() {
+        const container = document.getElementById('modulesList');
+        container.innerHTML = '';
+
+        availableModules.forEach(module => {
+            const moduleDiv = document.createElement('div');
+            moduleDiv.style.cssText = 'border:1px solid #ddd; margin:5px 0; padding:10px; border-radius:4px;';
+            
+            const isActive = activeModules.has(module.id);
+            const isCoreModule = module.type === 'core';
+            
+            moduleDiv.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <strong>${module.name}</strong> <span style="color:#666;">(${module.type})</span>
+                        <br><small>${module.description}</small>
+                    </div>
+                    <div>
+                        ${isActive ? 
+                            `<button onclick="deactivateModule('${module.id}')" ${isCoreModule ? 'disabled' : ''}>
+                                ${isCoreModule ? '🔒 Core' : '✅ Active'}
+                            </button>` :
+                            `<button onclick="activateModule('${module.id}')">➕ Activate</button>`
+                        }
+                    </div>
+                </div>
+            `;
+            container.appendChild(moduleDiv);
+        });
+    }
+
+    async function activateModule(moduleId) {
+        try {
+            activeModules.add(moduleId);
+            await loadModuleBlocks(moduleId);
+            renderModulesList();
+            updateActiveModulesList();
+            console.log(`Module ${moduleId} activated`);
+        } catch (e) {
+            console.error(`Failed to activate module ${moduleId}:`, e);
+            activeModules.delete(moduleId);
+        }
+    }
+
+    function deactivateModule(moduleId) {
+        const module = availableModules.find(m => m.id === moduleId);
+        if (module && module.type !== 'core') {
+            activeModules.delete(moduleId);
+            // Remove blocks from toolbox (would need more complex implementation)
+            renderModulesList();
+            updateActiveModulesList();
+            console.log(`Module ${moduleId} deactivated`);
+        }
+    }
+
+    function updateActiveModulesList() {
+        const container = document.getElementById('activeModulesList');
+        container.innerHTML = '';
+        
+        const activeList = Array.from(activeModules).map(id => {
+            const module = availableModules.find(m => m.id === id);
+            return module ? module.name : id;
+        }).join(', ');
+        
+        container.innerHTML = `<p>Active: ${activeList}</p>`;
+    }
+
+    async function loadModuleBlocks(moduleId) {
+        try {
+            const response = await fetch(`/modules/${moduleId}/spec`);
+            const spec = await response.json();
+            
+            if (moduleId === 'linkedin') {
+                generateLinkedInBlocks(spec);
+            } else if (moduleId === 'openai') {
+                generateOpenAIBlocks(spec);
+            } else if (moduleId === 'mcp') {
+                generateMCPBlocks(spec);
+            }
+            
+            // Refresh toolbox with proper error handling
+            try { 
+                const toolboxElement = document.getElementById('toolbox');
+                if (toolboxElement && workspace && workspace.updateToolbox) {
+                    workspace.updateToolbox(toolboxElement); 
+                }
+            } catch(e) { 
+                console.warn('Module toolbox update failed:', e); 
+            }
+        } catch (e) {
+            console.error(`Failed to load blocks for module ${moduleId}:`, e);
+        }
+    }
+
+    function generateLinkedInBlocks(spec) {
+        // Add LinkedIn category if not exists - with safety checks
+        let linkedinCategory = document.getElementById('linkedinCategory');
+        if (!linkedinCategory) {
+            linkedinCategory = document.createElement('category');
+            linkedinCategory.id = 'linkedinCategory';
+            linkedinCategory.setAttribute('name', 'LinkedIn');
+            linkedinCategory.setAttribute('colour', '0');
+            
+            const toolbox = document.getElementById('toolbox');
+            if (toolbox) {
+                toolbox.appendChild(linkedinCategory);
+            } else {
+                console.warn('Toolbox element not found for LinkedIn category');
+                return;
+            }
+        }
+
+        // Clear existing blocks to prevent conflicts
+        try {
+            linkedinCategory.innerHTML = '';
+        } catch(e) {
+            console.warn('Could not clear LinkedIn category:', e);
+        }
+
+        Object.entries(spec.blocks || {}).forEach(([blockId, blockSpec]) => {
+            const blockName = `linkedin_${blockId}`;
+            
+            // Add block to toolbox
+            const blockEl = document.createElement('block');
+            blockEl.setAttribute('type', blockName);
+            linkedinCategory.appendChild(blockEl);
+
+            // Define block
+            Blockly.Blocks[blockName] = {
+                init: function() {
+                    this.appendDummyInput().appendField(`📊 ${blockSpec.summary}`);
+                    
+                    // Add parameter inputs
+                    if (blockSpec.params) {
+                        blockSpec.params.forEach(param => {
+                            this.appendValueInput(param.name.toUpperCase())
+                                .appendField(`${param.name}:`)
+                                .setCheck(['String', 'Number']);
+                        });
+                    }
+                    
+                    this.setPreviousStatement(true, null);
+                    this.setNextStatement(true, null);
+                    this.setColour(0);
+                }
+            };
+
+            // Generate code
+            const jsGen = Blockly.JavaScript;
+            const generateCode = function(block, generator) {
+                let url = `"${spec.base_url}${blockSpec.path}"`;
+                
+                // Handle path params
+                if (blockSpec.params) {
+                    blockSpec.params.forEach(param => {
+                        const value = generator ? 
+                            generator.valueToCode(block, param.name.toUpperCase(), generator.ORDER_NONE) :
+                            Blockly.JavaScript.valueToCode(block, param.name.toUpperCase(), Blockly.JavaScript.ORDER_NONE);
+                        if (value) {
+                            url = url.replace(`{${param.name}}`, '" + ' + value + ' + "');
+                        }
+                    });
+                }
+
+                return `
+                    htmlOutput += '<div id="${blockName}">Loading LinkedIn data...</div>';
+                    fetch(${url}, {
+                        headers: {
+                            'Authorization': 'Bearer YOUR_LINKEDIN_TOKEN'
+                        }
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        document.getElementById("${blockName}").innerHTML = 
+                            '<h4>LinkedIn Data:</h4><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                    })
+                    .catch(err => {
+                        document.getElementById("${blockName}").innerHTML = 
+                            '<div style="color:red">LinkedIn API Error: ' + err.message + '</div>';
+                    });
+                `;
+            };
+
+            if (jsGen && jsGen.forBlock) {
+                jsGen.forBlock[blockName] = generateCode;
+            } else {
+                Blockly.JavaScript[blockName] = generateCode;
+            }
+        });
+    }
+
+    function generateOpenAIBlocks(spec) {
+        // Add OpenAI category with safety checks
+        let openaiCategory = document.getElementById('openaiCategory');
+        if (!openaiCategory) {
+            openaiCategory = document.createElement('category');
+            openaiCategory.id = 'openaiCategory';
+            openaiCategory.setAttribute('name', 'OpenAI');
+            openaiCategory.setAttribute('colour', '300');
+            
+            const toolbox = document.getElementById('toolbox');
+            if (toolbox) {
+                toolbox.appendChild(openaiCategory);
+            } else {
+                console.warn('Toolbox element not found for OpenAI category');
+                return;
+            }
+        }
+
+        // Clear existing blocks to prevent conflicts
+        try {
+            openaiCategory.innerHTML = '';
+        } catch(e) {
+            console.warn('Could not clear OpenAI category:', e);
+        }
+
+        Object.entries(spec.blocks || {}).forEach(([blockId, blockSpec]) => {
+            const blockName = `openai_${blockId}`;
+            
+            const blockEl = document.createElement('block');
+            blockEl.setAttribute('type', blockName);
+            openaiCategory.appendChild(blockEl);
+
+            Blockly.Blocks[blockName] = {
+                init: function() {
+                    this.appendDummyInput().appendField(`🤖 ${blockSpec.summary}`);
+                    
+                    if (blockSpec.params) {
+                        blockSpec.params.forEach(param => {
+                            this.appendValueInput(param.name.toUpperCase())
+                                .appendField(`${param.name}:`)
+                                .setCheck(['String', 'Number']);
+                        });
+                    }
+                    
+                    this.setPreviousStatement(true, null);
+                    this.setNextStatement(true, null);
+                    this.setColour(300);
+                }
+            };
+
+            const generateCode = function(block, generator) {
+                return `
+                    htmlOutput += '<div id="${blockName}">Processing with AI...</div>';
+                    // Note: Replace YOUR_OPENAI_KEY with actual API key
+                    fetch("${spec.base_url}${blockSpec.path}", {
+                        method: "${blockSpec.method}",
+                        headers: {
+                            'Authorization': 'Bearer YOUR_OPENAI_KEY',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            model: "gpt-3.5-turbo",
+                            messages: [{"role": "user", "content": "Hello from Blockly!"}],
+                            max_tokens: 100
+                        })
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        document.getElementById("${blockName}").innerHTML = 
+                            '<h4>AI Response:</h4><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                    })
+                    .catch(err => {
+                        document.getElementById("${blockName}").innerHTML = 
+                            '<div style="color:red">OpenAI API Error: ' + err.message + '</div>';
+                    });
+                `;
+            };
+
+            const jsGen = Blockly.JavaScript;
+            if (jsGen && jsGen.forBlock) {
+                jsGen.forBlock[blockName] = generateCode;
+            } else {
+                Blockly.JavaScript[blockName] = generateCode;
+            }
+        });
+    }
+
+    function generateMCPBlocks(spec) {
+        // Add MCP category with safety checks
+        let mcpCategory = document.getElementById('mcpCategory');
+        if (!mcpCategory) {
+            mcpCategory = document.createElement('category');
+            mcpCategory.id = 'mcpCategory';
+            mcpCategory.setAttribute('name', 'MCP');
+            mcpCategory.setAttribute('colour', '45');
+            
+            const toolbox = document.getElementById('toolbox');
+            if (toolbox) {
+                toolbox.appendChild(mcpCategory);
+            } else {
+                console.warn('Toolbox element not found for MCP category');
+                return;
+            }
+        }
+
+        // Clear existing blocks to prevent conflicts
+        try {
+            mcpCategory.innerHTML = '';
+        } catch(e) {
+            console.warn('Could not clear MCP category:', e);
+        }
+
+        Object.entries(spec.blocks || {}).forEach(([blockId, blockSpec]) => {
+            const blockName = `mcp_${blockId}`;
+            
+            const blockEl = document.createElement('block');
+            blockEl.setAttribute('type', blockName);
+            mcpCategory.appendChild(blockEl);
+
+            Blockly.Blocks[blockName] = {
+                init: function() {
+                    this.appendDummyInput().appendField(`🔧 ${blockSpec.summary}`);
+                    
+                    if (blockSpec.params) {
+                        blockSpec.params.forEach(param => {
+                            this.appendValueInput(param.name.toUpperCase())
+                                .appendField(`${param.name}:`)
+                                .setCheck(['String', 'Number']);
+                        });
+                    }
+                    
+                    this.setPreviousStatement(true, null);
+                    this.setNextStatement(true, null);
+                    this.setColour(45);
+                }
+            };
+
+            const generateCode = function(block, generator) {
+                return `
+                    htmlOutput += '<div id="${blockName}">Calling MCP tool...</div>';
+                    fetch("${spec.base_url}${blockSpec.path}", {
+                        method: "${blockSpec.method}",
+                        headers: {'Content-Type': 'application/json'}
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        document.getElementById("${blockName}").innerHTML = 
+                            '<h4>MCP Response:</h4><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                    })
+                    .catch(err => {
+                        document.getElementById("${blockName}").innerHTML = 
+                            '<div style="color:red">MCP Error: ' + err.message + '</div>';
+                    });
+                `;
+            };
+
+            const jsGen = Blockly.JavaScript;
+            if (jsGen && jsGen.forBlock) {
+                jsGen.forBlock[blockName] = generateCode;
+            } else {
+                Blockly.JavaScript[blockName] = generateCode;
+            }
+        });
+    }
+
+    async function uploadModuleFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/modules/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            if (response.ok) {
+                alert('Module uploaded successfully!');
+                await loadAvailableModules();
+            } else {
+                alert('Upload failed: ' + result.error);
+            }
+        } catch (e) {
+            alert('Upload error: ' + e.message);
+        }
+        
+        // Reset file input
+        event.target.value = '';
+    }
+
+    // Make functions globally available
+    window.activateModule = activateModule;
+    window.deactivateModule = deactivateModule;
 
     // --- Generowanie wynikowego HTML ---
     function buildIframeHTML(code) {
@@ -361,17 +1146,46 @@
 <html>
 <head>
     <meta charset="UTF-8" />
-    <style>body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;padding:12px;}</style>
+    <style>
+      body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;padding:12px;}
+      .c20-b{position:relative;}
+      .c20-highlight{outline:2px solid #1976d2; background:rgba(25,118,210,0.08); outline-offset:2px;}
+    </style>
 </head>
 <body>
     <div id="app"></div>
     <script>
         let views = [];
         let htmlOutput = "";
+        // Base URL of the parent app (used for API calls from sandboxed iframe)
+        const API_BASE = ${JSON.stringify(window.location.origin)};
+        // Helper to wrap HTML with block id for preview highlighting
+        function appendHtmlWithBid(bid, html){
+          const id = bid || '';
+          htmlOutput += '<span class="c20-b" data-bid="'+id+'">'+html+'</span>';
+        }
+        // Highlighting support inside iframe
+        let __hl = [];
+        function __clearHighlight(){ __hl.forEach(el=>el.classList.remove('c20-highlight')); __hl = []; }
+        function highlightByBlockId(bid){
+          __clearHighlight();
+          if (!bid) return;
+          const nodes = document.querySelectorAll('[data-bid="'+bid+'"]');
+          nodes.forEach(el=>{
+            el.classList.add('c20-highlight');
+            try { el.scrollIntoView({block:'nearest', inline:'nearest', behavior:'smooth'}); } catch(_){ }
+          });
+          __hl = Array.from(nodes);
+        }
+        window.addEventListener('message', (ev)=>{
+          const d = ev && ev.data || {};
+          if (d && d.type === 'highlight') highlightByBlockId(d.blockId);
+        });
         ${code}
         let finalHTML = "";
         views.forEach(v=>{
-          finalHTML += '<section id="'+v.name+'">'+v.html+'</section>';
+          const bid = v && v.bid ? ' data-bid="'+v.bid+'"' : '';
+          finalHTML += '<section'+bid+' id="'+v.name+'">'+v.html+'</section>';
         });
         finalHTML += htmlOutput;
         document.getElementById('app').innerHTML = finalHTML;
@@ -379,11 +1193,27 @@
 </body>
 </html>`;
     }
+    // Manual render test to verify newline/quote/backtick handling via document.write
+    function runRenderTest(){
+        try {
+            const testCode = [
+                "const tricky = `<p id=\"t\">\"double\" 'single' \\\"backticks\\\" line1",
+                "line2 & <span>ampersand &copy;</span></p>`;",
+                "views.push({name:\"Test\", bid:\"TESTVIEW\", html: tricky});",
+                "appendHtmlWithBid(\"TEST\", `<div>inline \"q\" 'q' \\\"bt\\\"</div>`);"
+            ].join("\n");
+            const iframeContent = buildIframeHTML(testCode);
+            window.lastIframeHTML = iframeContent;
+            setEditorValue(iframeContent);
+            writeIframeHTML(iframeContent);
+        } catch(e){ console.error('Render test failed', e); }
+    }
+
     function runCode() {
         try {
             // Ensure generators are registered right before code generation
             console.log("Ensuring generators are registered...");
-            
+
             // Re-register add_view generator to ensure it's available (typed generator API with legacy fallback)
             const jsGen = Blockly.JavaScript;
             if (jsGen && jsGen.forBlock) {
@@ -399,33 +1229,33 @@
                     return `views.push({name:"${name}", html:\`${content}\`});\n`;
                 };
             }
-            
+
             console.log("add_view generator (forBlock):", jsGen && jsGen.forBlock ? typeof jsGen.forBlock['add_view'] : 'no forBlock');
             console.log("add_view generator (legacy):", typeof Blockly.JavaScript['add_view']);
-            
+
             let code = "";
             try {
                 code = Blockly.JavaScript.workspaceToCode(workspace);
             } catch (e) {
                 console.error("Error generating code from workspace:", e);
                 // Show error in preview
-                document.getElementById('preview').srcdoc = `
-                    <html><body>
+                const errHTML = `<!DOCTYPE html><html><body>
                         <h3>Error generating code:</h3>
-                        <pre>${e.message}</pre>
+                        <pre>${(e && e.message) ? e.message.replace(/[<>&]/g, s=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[s])) : 'Unknown error'}</pre>
                         <p>Please check that all blocks have proper generators defined.</p>
-                    </body></html>
-                `;
+                    </body></html>`;
+                window.lastIframeHTML = errHTML;
+                setEditorValue(errHTML);
+                writeIframeHTML(errHTML);
                 return;
             }
-            
+
             // Create a complete HTML document structure for the iframe
-            // update code editor view
-            const editor = document.getElementById('codeEditor');
-            if (editor) { editor.value = code; }
             let iframeContent = buildIframeHTML(code);
             window.lastIframeHTML = iframeContent;
-            document.getElementById('preview').srcdoc = iframeContent;
+            // update code editor view to show final HTML doc
+            setEditorValue(iframeContent);
+            writeIframeHTML(iframeContent);
         } catch (e) {
             console.error("Error in runCode:", e);
         }
@@ -467,7 +1297,7 @@
                 this.setColour(120);
             }
         };
-        
+
         // Ensure JavaScript generator is properly defined
         if (!Blockly.JavaScript) {
             console.error("Blockly.JavaScript is not available!");
@@ -484,16 +1314,34 @@
             jsGen.forBlock['add_view'] = function(block, generator) {
                 const name = block.getFieldValue('VIEW');
                 const content = generator.statementToCode(block, 'CONTENT');
-                return `views.push({name:"${name}", html:\`${content}\`});\n`;
+                return `
+(function(){
+  const __prev = htmlOutput;
+  htmlOutput = "";
+  ${content}
+  const __children = htmlOutput;
+  htmlOutput = __prev;
+  views.push({name:"${name}", bid:"${block.id}", html: __children});
+})();
+`;
             };
         } else {
             Blockly.JavaScript['add_view'] = function(block) {
                 const name = block.getFieldValue('VIEW');
                 const content = Blockly.JavaScript.statementToCode(block, 'CONTENT');
-                return `views.push({name:"${name}", html:\`${content}\`});\n`;
+                return `
+(function(){
+  const __prev = htmlOutput;
+  htmlOutput = "";
+  ${content}
+  const __children = htmlOutput;
+  htmlOutput = __prev;
+  views.push({name:"${name}", bid:"${block.id}", html: __children});
+})();
+`;
             };
         }
-        
+
         // Verify the generator was registered
         console.log("add_view generator registered (forBlock):", jsGen.forBlock ? typeof jsGen.forBlock['add_view'] : 'no forBlock');
         console.log("add_view generator registered (legacy):", typeof Blockly.JavaScript['add_view']);
@@ -515,13 +1363,13 @@
             jsGen.forBlock['ui_heading'] = function(block, generator) {
                 const level = block.getFieldValue('LEVEL') || '1';
                 const text = block.getFieldValue('TEXT') || '';
-                return `htmlOutput += \`<h${level}>${text}</h${level}>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<h${level}>${text}</h${level}>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_heading'] = function(block) {
                 const level = block.getFieldValue('LEVEL') || '1';
                 const text = block.getFieldValue('TEXT') || '';
-                return `htmlOutput += \`<h${level}>${text}</h${level}>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<h${level}>${text}</h${level}>\`);\n`;
             };
         }
 
@@ -539,12 +1387,12 @@
         if (jsGen.forBlock) {
             jsGen.forBlock['ui_paragraph'] = function(block, generator) {
                 const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
-                return `htmlOutput += \`<p>${text}</p>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<p>${text}</p>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_paragraph'] = function(block) {
                 const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
-                return `htmlOutput += \`<p>${text}</p>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<p>${text}</p>\`);\n`;
             };
         }
 
@@ -562,12 +1410,12 @@
         if (jsGen.forBlock) {
             jsGen.forBlock['ui_html'] = function(block, generator) {
                 const html = (block.getFieldValue('HTML') || '').replace(/`/g, '\\`');
-                return `htmlOutput += \`${html}\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`${html}\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_html'] = function(block) {
                 const html = (block.getFieldValue('HTML') || '').replace(/`/g, '\\`');
-                return `htmlOutput += \`${html}\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`${html}\`);\n`;
             };
         }
 
@@ -577,7 +1425,7 @@
                 this.appendDummyInput()
                     .appendField("Obraz")
                     .appendField("URL", "")
-                    .appendField(new Blockly.FieldTextInput("https://via.placeholder.com/300"), "SRC");
+                    .appendField(new Blockly.FieldTextInput("https://sapletta.github.io/about/image.png"), "SRC");
                 this.appendDummyInput()
                     .appendField("ALT")
                     .appendField(new Blockly.FieldTextInput("obraz"), "ALT");
@@ -595,7 +1443,7 @@
                 const alt = block.getFieldValue('ALT') || '';
                 const width = block.getFieldValue('WIDTH');
                 const widthAttr = width ? ` width=\"${width}\"` : '';
-                return `htmlOutput += \`<img src=\"${src}\" alt=\"${alt}\"${widthAttr}>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<img src=\"${src}\" alt=\"${alt}\"${widthAttr}>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_image'] = function(block) {
@@ -603,7 +1451,7 @@
                 const alt = block.getFieldValue('ALT') || '';
                 const width = block.getFieldValue('WIDTH');
                 const widthAttr = width ? ` width=\"${width}\"` : '';
-                return `htmlOutput += \`<img src=\"${src}\" alt=\"${alt}\"${widthAttr}>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<img src=\"${src}\" alt=\"${alt}\"${widthAttr}>\`);\n`;
             };
         }
 
@@ -630,7 +1478,7 @@
   ${children}
   const __children = htmlOutput;
   htmlOutput = __prev;
-  htmlOutput += '<div class="${klass}">\n' + __children + '</div>\n';
+  appendHtmlWithBid('${block.id}', '<div class="${klass}">\n' + __children + '</div>\n');
 })();
 `;
             };
@@ -645,7 +1493,7 @@
   ${children}
   const __children = htmlOutput;
   htmlOutput = __prev;
-  htmlOutput += '<div class="${klass}">\n' + __children + '</div>\n';
+  appendHtmlWithBid('${block.id}', '<div class="${klass}">\n' + __children + '</div>\n');
 })();
 `;
             };
@@ -670,14 +1518,14 @@
                 const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
                 const oc = (block.getFieldValue('ONCLICK') || '').replace(/`/g, '\\`');
                 const ocAttr = oc ? ` onclick=\"${oc}\"` : '';
-                return `htmlOutput += \`<button${ocAttr}>${text}</button>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<button${ocAttr}>${text}</button>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_button'] = function(block) {
                 const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
                 const oc = (block.getFieldValue('ONCLICK') || '').replace(/`/g, '\\`');
                 const ocAttr = oc ? ` onclick=\"${oc}\"` : '';
-                return `htmlOutput += \`<button${ocAttr}>${text}</button>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<button${ocAttr}>${text}</button>\`);\n`;
             };
         }
 
@@ -703,14 +1551,14 @@
                 const href = (block.getFieldValue('HREF') || '').replace(/`/g, '\\`');
                 const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
                 const target = block.getFieldValue('TARGET') || '_self';
-                return `htmlOutput += \`<a href=\"${href}\" target=\"${target}\">${text}</a>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<a href=\"${href}\" target=\"${target}\">${text}</a>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_link'] = function(block) {
                 const href = (block.getFieldValue('HREF') || '').replace(/`/g, '\\`');
                 const text = (block.getFieldValue('TEXT') || '').replace(/`/g, '\\`');
                 const target = block.getFieldValue('TARGET') || '_self';
-                return `htmlOutput += \`<a href=\"${href}\" target=\"${target}\">${text}</a>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<a href=\"${href}\" target=\"${target}\">${text}</a>\`);\n`;
             };
         }
 
@@ -730,14 +1578,14 @@
                 const itemsRaw = (block.getFieldValue('ITEMS') || '');
                 const items = itemsRaw.split(/\r?\n/).filter(s=>s.trim().length>0).map(s=>s.replace(/`/g,'\\`'));
                 const lis = items.map(it=>`<li>${it}</li>`).join('');
-                return `htmlOutput += \`<ul>${lis}</ul>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<ul>${lis}</ul>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_list'] = function(block) {
                 const itemsRaw = (block.getFieldValue('ITEMS') || '');
                 const items = itemsRaw.split(/\r?\n/).filter(s=>s.trim().length>0).map(s=>s.replace(/`/g,'\\`'));
                 const lis = items.map(it=>`<li>${it}</li>`).join('');
-                return `htmlOutput += \`<ul>${lis}</ul>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<ul>${lis}</ul>\`);\n`;
             };
         }
 
@@ -759,7 +1607,7 @@
                     const tds = r.split('|').map(c=>`<td>${c.replace(/`/g,'\\`').trim()}</td>`).join('');
                     return `<tr>${tds}</tr>`;
                 }).join('');
-                return `htmlOutput += \`<table border=\"1\">${trs}</table>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<table border=\"1\">${trs}</table>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_table'] = function(block) {
@@ -768,7 +1616,7 @@
                     const tds = r.split('|').map(c=>`<td>${c.replace(/`/g,'\\`').trim()}</td>`).join('');
                     return `<tr>${tds}</tr>`;
                 }).join('');
-                return `htmlOutput += \`<table border=\"1\">${trs}</table>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<table border=\"1\">${trs}</table>\`);\n`;
             };
         }
 
@@ -800,7 +1648,7 @@
                 const type = block.getFieldValue('TYPE') || 'text';
                 const ph = (block.getFieldValue('PH') || '').replace(/`/g,'\\`');
                 const phAttr = ph ? ` placeholder=\"${ph}\"` : '';
-                return `htmlOutput += \`<label>${label}: <input type=\"${type}\" name=\"${name}\"${phAttr}></label>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<label>${label}: <input type=\"${type}\" name=\"${name}\"${phAttr}></label>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_input'] = function(block) {
@@ -809,7 +1657,7 @@
                 const type = block.getFieldValue('TYPE') || 'text';
                 const ph = (block.getFieldValue('PH') || '').replace(/`/g,'\\`');
                 const phAttr = ph ? ` placeholder=\"${ph}\"` : '';
-                return `htmlOutput += \`<label>${label}: <input type=\"${type}\" name=\"${name}\"${phAttr}></label>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<label>${label}: <input type=\"${type}\" name=\"${name}\"${phAttr}></label>\`);\n`;
             };
         }
 
@@ -834,7 +1682,7 @@
   ${children}
   const __children = htmlOutput;
   htmlOutput = __prev;
-  htmlOutput += '<div style="${style}">\n' + __children + '</div>\n';
+  appendHtmlWithBid('${block.id}', '<div style="${style}">\n' + __children + '</div>\n');
 })();
 `;
             };
@@ -849,7 +1697,7 @@
   ${children}
   const __children = htmlOutput;
   htmlOutput = __prev;
-  htmlOutput += '<div style="${style}">\n' + __children + '</div>\n';
+  appendHtmlWithBid('${block.id}', '<div style="${style}">\n' + __children + '</div>\n');
 })();
 `;
             };
@@ -879,7 +1727,7 @@
   ${children}
   const __children = htmlOutput;
   htmlOutput = __prev;
-  htmlOutput += '<div style="${style}">\n' + __children + '</div>\n';
+  appendHtmlWithBid('${block.id}', '<div style="${style}">\n' + __children + '</div>\n');
 })();
 `;
             };
@@ -895,7 +1743,7 @@
   ${children}
   const __children = htmlOutput;
   htmlOutput = __prev;
-  htmlOutput += '<div style="${style}">\n' + __children + '</div>\n';
+  appendHtmlWithBid('${block.id}', '<div style="${style}">\n' + __children + '</div>\n');
 })();
 `;
             };
@@ -912,11 +1760,11 @@
         };
         if (jsGen.forBlock) {
             jsGen.forBlock['ui_divider'] = function(block, generator) {
-                return `htmlOutput += \`<hr>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<hr>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_divider'] = function(block) {
-                return `htmlOutput += \`<hr>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<hr>\`);\n`;
             };
         }
 
@@ -934,12 +1782,12 @@
         if (jsGen.forBlock) {
             jsGen.forBlock['ui_spacer'] = function(block, generator) {
                 const h = Number(block.getFieldValue('HEIGHT') || 16);
-                return `htmlOutput += \`<div style=\"height:${h}px\"></div>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<div style=\"height:${h}px\"></div>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_spacer'] = function(block) {
                 const h = Number(block.getFieldValue('HEIGHT') || 16);
-                return `htmlOutput += \`<div style=\"height:${h}px\"></div>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<div style=\"height:${h}px\"></div>\`);\n`;
             };
         }
 
@@ -967,7 +1815,7 @@
   ${children}
   const __children = htmlOutput;
   htmlOutput = __prev;
-  htmlOutput += '<div style="${style}">\n' + '<h3>${title}</h3>\n' + __children + '</div>\n';
+  appendHtmlWithBid('${block.id}', '<div style="${style}">\n' + '<h3>${title}</h3>\n' + __children + '</div>\n');
 })();
 `;
             };
@@ -983,7 +1831,7 @@
   ${children}
   const __children = htmlOutput;
   htmlOutput = __prev;
-  htmlOutput += '<div style="${style}">\n' + '<h3>${title}</h3>\n' + __children + '</div>\n';
+  appendHtmlWithBid('${block.id}', '<div style="${style}">\n' + '<h3>${title}</h3>\n' + __children + '</div>\n');
 })();
 `;
             };
@@ -1009,7 +1857,7 @@
                 const text = (block.getFieldValue('TEXT') || '').replace(/`/g,'\\`');
                 const color = {info:'#eef6ff', success:'#ecfdf5', warning:'#fffbeb', error:'#fef2f2'}[kind] || '#eef6ff';
                 const border = {info:'#bfdbfe', success:'#bbf7d0', warning:'#fde68a', error:'#fecaca'}[kind] || '#bfdbfe';
-                return `htmlOutput += \`<div style=\"background:${color}; border:1px solid ${border}; padding:10px; border-radius:6px;\">${text}</div>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<div style=\"background:${color}; border:1px solid ${border}; padding:10px; border-radius:6px;\">${text}</div>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_alert'] = function(block) {
@@ -1017,7 +1865,7 @@
                 const text = (block.getFieldValue('TEXT') || '').replace(/`/g,'\\`');
                 const color = {info:'#eef6ff', success:'#ecfdf5', warning:'#fffbeb', error:'#fef2f2'}[kind] || '#eef6ff';
                 const border = {info:'#bfdbfe', success:'#bbf7d0', warning:'#fde68a', error:'#fecaca'}[kind] || '#bfdbfe';
-                return `htmlOutput += \`<div style=\"background:${color}; border:1px solid ${border}; padding:10px; border-radius:6px;\">${text}</div>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<div style=\"background:${color}; border:1px solid ${border}; padding:10px; border-radius:6px;\">${text}</div>\`);\n`;
             };
         }
 
@@ -1038,39 +1886,106 @@
             jsGen.forBlock['ui_code'] = function(block, generator) {
                 const lang = block.getFieldValue('LANG') || 'plaintext';
                 const code = (block.getFieldValue('CODE') || '').replace(/`/g,'\\`');
-                return `htmlOutput += \`<pre><code class=\"language-${lang}\">${code}</code></pre>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<pre><code class=\"language-${lang}\">${code}</code></pre>\`);\n`;
             };
             jsGen.forBlock['ui_svg_file'] = function(block, generator){
                 const file = block.getFieldValue('FILENAME') || '';
                 const safe = file.replace(/`/g, '\\`').replace(/"/g, '&quot;');
-                return `htmlOutput += \`<img src=\"/uploads/${safe}\" alt=\"svg\" style=\"max-width:100%\"/>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<img src=\"/uploads/${safe}\" alt=\"svg\" style=\"max-width:100%\"/>\`);\n`;
             };
             jsGen.forBlock['ui_xml_file'] = function(block, generator){
                 const file = block.getFieldValue('FILENAME') || '';
                 const height = block.getFieldValue('HEIGHT') || '400';
                 const safe = file.replace(/`/g, '\\`').replace(/"/g, '&quot;');
                 const h = height.replace(/[^0-9]/g, '') || '400';
-                return `htmlOutput += \`<object type=\"text/xml\" data=\"/uploads/${safe}\" style=\"width:100%;height:${h}px;border:1px solid #ddd\"></object>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<object type=\"text/xml\" data=\"/uploads/${safe}\" style=\"width:100%;height:${h}px;border:1px solid #ddd\"></object>\`);\n`;
             };
         } else {
             Blockly.JavaScript['ui_code'] = function(block) {
                 const lang = block.getFieldValue('LANG') || 'plaintext';
                 const code = (block.getFieldValue('CODE') || '').replace(/`/g,'\\`');
-                return `htmlOutput += \`<pre><code class=\"language-${lang}\">${code}</code></pre>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<pre><code class=\"language-${lang}\">${code}</code></pre>\`);\n`;
             };
             Blockly.JavaScript['ui_svg_file'] = function(block){
                 const file = block.getFieldValue('FILENAME') || '';
                 const safe = file.replace(/`/g, '\\`').replace(/"/g, '&quot;');
-                return `htmlOutput += \`<img src=\"/uploads/${safe}\" alt=\"svg\" style=\"max-width:100%\"/>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<img src=\"/uploads/${safe}\" alt=\"svg\" style=\"max-width:100%\"/>\`);\n`;
             };
             Blockly.JavaScript['ui_xml_file'] = function(block){
                 const file = block.getFieldValue('FILENAME') || '';
                 const height = block.getFieldValue('HEIGHT') || '400';
                 const safe = file.replace(/`/g, '\\`').replace(/"/g, '&quot;');
                 const h = height.replace(/[^0-9]/g, '') || '400';
-                return `htmlOutput += \`<object type=\"text/xml\" data=\"/uploads/${safe}\" style=\"width:100%;height:${h}px;border:1px solid #ddd\"></object>\`;\n`;
+                return `appendHtmlWithBid('${block.id}', \`<object type=\"text/xml\" data=\"/uploads/${safe}\" style=\"width:100%;height:${h}px;border:1px solid #ddd\"></object>\`);\n`;
             };
         }
+
+        // JSON Helper Blocks
+        Blockly.Blocks['json_object'] = {
+            init: function() {
+                this.appendDummyInput().appendField("JSON object");
+                this.appendStatementInput("PROPERTIES").appendField("properties:");
+                this.setOutput(true, "String");
+                this.setColour(160);
+            }
+        };
+
+        Blockly.Blocks['json_property'] = {
+            init: function() {
+                this.appendValueInput("KEY").appendField("key:").setCheck("String");
+                this.appendValueInput("VALUE").appendField("value:").setCheck(["String", "Number"]);
+                this.setPreviousStatement(true, null);
+                this.setNextStatement(true, null);
+                this.setColour(160);
+            }
+        };
+
+        Blockly.Blocks['json_array'] = {
+            init: function() {
+                this.appendDummyInput().appendField("JSON array");
+                this.appendStatementInput("ITEMS").appendField("items:");
+                this.setOutput(true, "String");
+                this.setColour(160);
+            }
+        };
+
+        // JavaScript generators for JSON blocks - Fixed version
+        const jsGen = Blockly.JavaScript;
+        
+        // JSON Object block generator
+        const jsonObjectGenerator = function(block, generator) {
+            const gen = generator || Blockly.JavaScript;
+            const properties = gen.statementToCode(block, 'PROPERTIES');
+            return [`JSON.stringify({${properties.replace(/,\s*$/, '')}})`, (gen.ORDER_FUNCTION_CALL || Blockly.JavaScript.ORDER_FUNCTION_CALL)];
+        };
+        
+        // JSON Property block generator
+        const jsonPropertyGenerator = function(block, generator) {
+            const gen = generator || Blockly.JavaScript;
+            const order = gen.ORDER_NONE || Blockly.JavaScript.ORDER_NONE;
+            const key = gen.valueToCode(block, 'KEY', order) || '""';
+            const value = gen.valueToCode(block, 'VALUE', order) || '""';
+            return `${key}: ${value},\n`;
+        };
+        
+        // JSON Array block generator 
+        const jsonArrayGenerator = function(block, generator) {
+            const gen = generator || Blockly.JavaScript;
+            const items = gen.statementToCode(block, 'ITEMS');
+            return [`JSON.stringify([${items.replace(/,\s*$/, '')}])`, (gen.ORDER_FUNCTION_CALL || Blockly.JavaScript.ORDER_FUNCTION_CALL)];
+        };
+
+        // Register generators using both methods for compatibility
+        if (jsGen && jsGen.forBlock) {
+            jsGen.forBlock['json_object'] = jsonObjectGenerator;
+            jsGen.forBlock['json_property'] = jsonPropertyGenerator;
+            jsGen.forBlock['json_array'] = jsonArrayGenerator;
+        }
+        
+        // Legacy registration as fallback
+        Blockly.JavaScript['json_object'] = jsonObjectGenerator;
+        Blockly.JavaScript['json_property'] = jsonPropertyGenerator;
+        Blockly.JavaScript['json_array'] = jsonArrayGenerator;
 
         return true;
     }
@@ -1080,7 +1995,7 @@
         console.log("=== BLOCKLY GENERATOR TEST ===");
         console.log("Blockly object:", typeof Blockly);
         console.log("Blockly.JavaScript object:", typeof Blockly.JavaScript);
-        
+
         // Test simple generator registration (typed API with fallback)
         const jsGen = Blockly.JavaScript;
         if (jsGen.forBlock) {
@@ -1092,7 +2007,7 @@
                 return 'console.log("test");\n';
             };
         }
-        
+
         console.log("test_block (forBlock):", jsGen.forBlock ? typeof jsGen.forBlock['test_block'] : 'no forBlock');
         console.log("add_view (forBlock):", jsGen.forBlock ? typeof jsGen.forBlock['add_view'] : 'no forBlock');
         console.log("test_block (legacy):", typeof Blockly.JavaScript['test_block']);
@@ -1106,13 +2021,13 @@
             console.error("Failed to define base blocks");
             return;
         }
-        
+
         // Test generator registration
         testGeneratorRegistration();
-        
+
         await generateApiBlocks();
         await loadScripts();
-        
+
         // Temporarily disable automatic code generation to stop error spam
         console.log("Initialization complete. Auto-generation enabled.");
         // Load existing project list into dropdown
@@ -1123,27 +2038,27 @@
         try { setDefaultProjectNameTimestamp(true); } catch(e){}
         // Auto-run once on init
         runCodeDebounced();
-        
+
         // (removed test page injection to keep auto preview)
     }
-    
+
     // Manual test function
     window.testCodeGeneration = function() {
         console.log("=== MANUAL CODE GENERATION TEST ===");
         testGeneratorRegistration();
-        
+
         try {
             let code = Blockly.JavaScript.workspaceToCode(workspace);
             console.log("Generated code:", code);
-            document.getElementById('preview').contentDocument.getElementById('output').textContent = 
+            document.getElementById('preview').contentDocument.getElementById('output').textContent =
                 "Success! Generated code:\n" + code;
         } catch (e) {
             console.error("Code generation failed:", e);
-            document.getElementById('preview').contentDocument.getElementById('output').textContent = 
+            document.getElementById('preview').contentDocument.getElementById('output').textContent =
                 "Error: " + e.message;
         }
     };
-    
+
     // ---- Ładowanie bloków ze skryptów ----
     async function loadScripts() {
       try {
@@ -1193,11 +2108,11 @@
             body:JSON.stringify({script:"${scr.script}",func:"${scr.func}",args:Object.values(data)})})
             .then(r=>r.json())
             .then(res=>{
-              document.querySelector('#app #${formId}_output').innerText = 
+              document.querySelector('#app #${formId}_output').innerText =
                 "stdout:\\n"+res.stdout+"\\n---\\nstderr:\\n"+res.stderr;
             })
             .catch(err=>{
-              document.querySelector('#app #${formId}_output').innerText = 
+              document.querySelector('#app #${formId}_output').innerText =
                 "error:\\n"+err.message;
             });
         }
@@ -1229,11 +2144,11 @@
             body:JSON.stringify({script:"${scr.script}",func:"${scr.func}",args:Object.values(data)})})
             .then(r=>r.json())
             .then(res=>{
-              document.querySelector('#app #${formId}_output').innerText = 
+              document.querySelector('#app #${formId}_output').innerText =
                 "stdout:\\n"+res.stdout+"\\n---\\nstderr:\\n"+res.stderr;
             })
             .catch(err=>{
-              document.querySelector('#app #${formId}_output').innerText = 
+              document.querySelector('#app #${formId}_output').innerText =
                 "error:\\n"+err.message;
             });
         }
@@ -1246,7 +2161,7 @@
         console.error("Failed to load scripts", e);
       }
     }
-    
+
     // Initialize all blocks and start the application
     initializeBlocks();
 </script>

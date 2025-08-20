@@ -1,0 +1,64 @@
+<module_package>
+  <metadata>
+    <name>OpenAI API Integration</name>
+    <version>1.0.0</version>
+    <description>Complete OpenAI API integration with chat, completions, and embeddings</description>
+    <author>C20Scratch Team</author>
+    <type>public_api</type>
+    <requires_auth>true</requires_auth>
+  </metadata>
+  
+  <configuration>
+    <api_key_required>true</api_key_required>
+    <base_url>https://api.openai.com/v1</base_url>
+    <auth_type>bearer_token</auth_type>
+    <rate_limit>60</rate_limit>
+  </configuration>
+  
+  <blocks>
+    <block id="openai_chat" category="OpenAI">
+      <name>Chat Completion</name>
+      <description>Generate AI chat responses using GPT models</description>
+      <method>POST</method>
+      <endpoint>/chat/completions</endpoint>
+      <parameters>
+        <param name="model" type="string" required="false" default="gpt-3.5-turbo">AI Model to use</param>
+        <param name="messages" type="array" required="true">Chat messages array</param>
+        <param name="max_tokens" type="number" required="false" default="100">Maximum response tokens</param>
+        <param name="temperature" type="number" required="false" default="0.7">Response creativity (0-2)</param>
+      </parameters>
+      <example_usage>
+        Send messages to ChatGPT and get AI responses. Perfect for chatbots, Q&A, and content generation.
+      </example_usage>
+    </block>
+    
+    <block id="openai_embeddings" category="OpenAI">
+      <name>Text Embeddings</name>
+      <description>Convert text to numerical embeddings for semantic search</description>
+      <method>POST</method>
+      <endpoint>/embeddings</endpoint>
+      <parameters>
+        <param name="model" type="string" required="false" default="text-embedding-ada-002">Embedding model</param>
+        <param name="input" type="string" required="true">Text to convert to embeddings</param>
+      </parameters>
+      <example_usage>
+        Convert text to vector embeddings for similarity search, clustering, or ML features.
+      </example_usage>
+    </block>
+    
+    <block id="openai_image" category="OpenAI">
+      <name>Generate Image</name>
+      <description>Generate images from text descriptions using DALL-E</description>
+      <method>POST</method>
+      <endpoint>/images/generations</endpoint>
+      <parameters>
+        <param name="prompt" type="string" required="true">Image description</param>
+        <param name="size" type="string" required="false" default="1024x1024">Image size</param>
+        <param name="n" type="number" required="false" default="1">Number of images</param>
+      </parameters>
+      <example_usage>
+        Create unique images from text descriptions. Great for creative projects and content.
+      </example_usage>
+    </block>
+  </blocks>
+</module_package>

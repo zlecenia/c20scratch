@@ -1,0 +1,68 @@
+<module_package>
+  <metadata>
+    <name>MCP Protocol Integration</name>
+    <version>1.0.0</version>
+    <description>Model Context Protocol integration for AI tool orchestration</description>
+    <author>C20Scratch Team</author>
+    <type>public_api</type>
+    <requires_auth>false</requires_auth>
+  </metadata>
+  
+  <configuration>
+    <api_key_required>false</api_key_required>
+    <base_url>http://localhost:3001</base_url>
+    <auth_type>none</auth_type>
+    <rate_limit>unlimited</rate_limit>
+  </configuration>
+  
+  <blocks>
+    <block id="mcp_list_tools" category="MCP">
+      <name>List Available Tools</name>
+      <description>Get list of all available MCP tools and their capabilities</description>
+      <method>GET</method>
+      <endpoint>/tools</endpoint>
+      <parameters></parameters>
+      <example_usage>
+        Discover what MCP tools are available in your environment. Essential first step.
+      </example_usage>
+    </block>
+    
+    <block id="mcp_call_tool" category="MCP">
+      <name>Call MCP Tool</name>
+      <description>Execute a specific MCP tool with provided arguments</description>
+      <method>POST</method>
+      <endpoint>/tools/{tool_name}/call</endpoint>
+      <parameters>
+        <param name="tool_name" type="string" required="true">Name of MCP tool to call</param>
+        <param name="arguments" type="object" required="true">Tool arguments as JSON</param>
+      </parameters>
+      <example_usage>
+        Execute MCP tools like file operations, data processing, or external integrations.
+      </example_usage>
+    </block>
+    
+    <block id="mcp_get_resources" category="MCP">
+      <name>Get MCP Resources</name>
+      <description>List available MCP resources like files, databases, APIs</description>
+      <method>GET</method>
+      <endpoint>/resources</endpoint>
+      <parameters>
+        <param name="type" type="string" required="false">Filter by resource type</param>
+      </parameters>
+      <example_usage>
+        Access MCP-managed resources like files, databases, or external data sources.
+      </example_usage>
+    </block>
+    
+    <block id="mcp_health" category="MCP">
+      <name>MCP Health Check</name>
+      <description>Check MCP server status and connectivity</description>
+      <method>GET</method>
+      <endpoint>/health</endpoint>
+      <parameters></parameters>
+      <example_usage>
+        Verify that MCP server is running and accessible before using other tools.
+      </example_usage>
+    </block>
+  </blocks>
+</module_package>

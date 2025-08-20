@@ -1,3 +1,30 @@
+# TODO (current status)
+
+- [completed] Hide auto-run toggle and status in UI controls
+- [completed] Preview highlighting in iframe via data-bid + postMessage
+- [in_progress] Migrate generators to typed API (forBlock) with legacy fallback
+- [pending] E2E: generate UI, run preview, enable auto-run by default if stable
+- [pending] Optional: textarea field plugin for multiline inputs
+- [completed] Update TODO.md with current task list
+- [completed] Preview iframe sandbox (sandbox="allow-scripts allow-same-origin")
+
+- [pending] Toolbox: dodać grupy kategorii (.blocklyToolboxCategoryGroup): Frontend, Backend, Scripts (JS/PY/SH), DevOps
+- [pending] Auto-bloki dla skryptów JS/PY/SH (gotowe funkcje): parametry z sygnatur funkcji znalezionych w katalogach zdef. w .env
+- [pending] Backend: endpointy skanujące katalogi (z .env) i zwracające listę funkcji + parametry dla każdego języka
+- [pending] Projekty wieloplikowe: .js, .py, .sh, .html; manifest project.json; API zapisu/odczytu aktualizacja
+- [pending] IDE: drzewo plików (dodaj/usuń/zmień nazwę), wielokrotne edytory (syntax highlight per typ)
+- [pending] Runner: wybór entrypointu i kolejności uruchomień; JS w iframe sandbox; PY/SH na serwerze ze strumieniowaniem logów
+- [pending] Integracja Docker: generatory Dockerfile i docker-compose.yml; przyciski build/run/stop; backend wrapery
+- [pending] Widok listy aplikacji/projektów: panel do listowania, uruchamiania i edycji projektów (także szablony/demo)
+- [pending] Export/build: jeden klik do paczki FE + szkieletu BE; zapis artefaktów
+- [in_progress] Bugfix: iframe srcdoc – przełączono na document.write (unikamy escapingu), dodano przycisk „Render Test”; testy automatyczne pending
+- [low] Warnings: ograniczyć ostrzeżenia source map (pin/host mapy)
+- [high] Security: sandbox iframe, walidacja ścieżek, sanityzacja wejść, ochrona przed command injection
+- [pending] Dokumentacja i przykłady: README, env.example (klucze katalogów), projekty pokazowe FE/BE/DevOps + Docker
+- [pending] Testy E2E i CI: scenariusze multi-file, runnery, Docker; skrypt CI
+
+---
+
 Super 🔥 — czyli poszerzamy Twój IDE o kolejny moduł:
 
 * Oprócz **OpenAPI → bloki API**,

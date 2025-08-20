@@ -1,0 +1,107 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <variables></variables>
+  <block type="add_view" id="main_view" x="100" y="100">
+    <field name="NAME">LinkedIn API Demo</field>
+    <next>
+      <block type="ui_heading" id="title">
+        <field name="LEVEL">1</field>
+        <field name="TEXT">📊 LinkedIn API Integration Demo</field>
+        <next>
+          <block type="ui_alert" id="auth_notice">
+            <field name="TYPE">warning</field>
+            <field name="TEXT">⚠️ This demo requires LinkedIn API access token. Replace 'YOUR_LINKEDIN_TOKEN' in generated code with your actual token.</field>
+            <next>
+              <block type="ui_paragraph" id="intro">
+                <field name="TEXT">This demo shows how to integrate LinkedIn API for professional data retrieval. Activate the LinkedIn module in Module Manager first!</field>
+                <next>
+                  <block type="ui_divider" id="div1">
+                    <next>
+                      <block type="ui_heading" id="profile_section">
+                        <field name="LEVEL">2</field>
+                        <field name="TEXT">👤 Profile Data</field>
+                        <next>
+                          <block type="ui_paragraph" id="profile_desc">
+                            <field name="TEXT">Retrieve LinkedIn profile information:</field>
+                            <next>
+                              <block type="linkedin_linkedin_profile" id="get_profile">
+                                <value name="PERSON_ID">
+                                  <block type="text" id="person_id_value">
+                                    <field name="TEXT">abc123def</field>
+                                  </block>
+                                </value>
+                                <next>
+                                  <block type="ui_divider" id="div2">
+                                    <next>
+                                      <block type="ui_heading" id="company_section">
+                                        <field name="LEVEL">2</field>
+                                        <field name="TEXT">🏢 Company Data</field>
+                                        <next>
+                                          <block type="ui_paragraph" id="company_desc">
+                                            <field name="TEXT">Get company information:</field>
+                                            <next>
+                                              <block type="linkedin_linkedin_company" id="get_company">
+                                                <value name="COMPANY_ID">
+                                                  <block type="text" id="company_id_value">
+                                                    <field name="TEXT">1234567</field>
+                                                  </block>
+                                                </value>
+                                                <next>
+                                                  <block type="ui_divider" id="div3">
+                                                    <next>
+                                                      <block type="ui_heading" id="setup_section">
+                                                        <field name="LEVEL">2</field>
+                                                        <field name="TEXT">⚙️ Setup Instructions</field>
+                                                        <next>
+                                                          <block type="ui_code" id="setup_instructions">
+                                                            <field name="LANG">markdown</field>
+                                                            <field name="CODE"># LinkedIn API Setup
+
+1. **Get API Access**: 
+   - Create LinkedIn Developer account
+   - Create new app at https://www.linkedin.com/developers/apps
+   - Get client credentials
+
+2. **Authentication**: 
+   - Implement OAuth 2.0 flow
+   - Get access token for API calls
+   - Replace 'YOUR_LINKEDIN_TOKEN' in code
+
+3. **API Limits**: 
+   - Free tier: 100 API calls/day
+   - Rate limits apply per endpoint
+   - Cache responses when possible
+
+4. **Required Permissions**:
+   - r_liteprofile (basic profile)
+   - r_organization_social (company data)
+   - w_member_social (posting)</field>
+                                                          </block>
+                                                        </next>
+                                                      </block>
+                                                    </next>
+                                                  </block>
+                                                </next>
+                                              </block>
+                                            </next>
+                                          </block>
+                                        </next>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </next>
+                              </block>
+                            </next>
+                          </block>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+</xml>

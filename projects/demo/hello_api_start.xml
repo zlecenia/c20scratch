@@ -1,0 +1,69 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <variables></variables>
+  <block type="add_view" id="main_view" x="100" y="100">
+    <field name="NAME">Hello API - Getting Started</field>
+    <next>
+      <block type="ui_heading" id="title">
+        <field name="LEVEL">1</field>
+        <field name="TEXT">👋 Hello API - Your First API Call</field>
+        <next>
+          <block type="ui_paragraph" id="intro">
+            <field name="TEXT">Welcome! This is your first step into API integration with visual blocks.</field>
+            <next>
+              <block type="ui_alert" id="welcome_alert">
+                <field name="TYPE">info</field>
+                <field name="TEXT">🚀 This demo shows the simplest possible API call. Perfect for beginners!</field>
+                <next>
+                  <block type="ui_heading" id="api_section">
+                    <field name="LEVEL">2</field>
+                    <field name="TEXT">📡 API Call</field>
+                    <next>
+                      <block type="ui_paragraph" id="api_desc">
+                        <field name="TEXT">Click 'Run Preview' to see the API response below:</field>
+                        <next>
+                          <block type="api_get__api_hello" id="hello_call">
+                            <next>
+                              <block type="ui_divider" id="divider">
+                                <next>
+                                  <block type="ui_heading" id="learn_more">
+                                    <field name="LEVEL">2</field>
+                                    <field name="TEXT">📚 What happened?</field>
+                                    <next>
+                                      <block type="ui_paragraph" id="explanation">
+                                        <field name="TEXT">The block above called our backend API at /api/hello and displayed the JSON response. This is the foundation for all API interactions!</field>
+                                        <next>
+                                          <block type="ui_code" id="response_example">
+                                            <field name="LANG">json</field>
+                                            <field name="CODE">// Expected API response:
+{
+  "msg": "Hello from backend",
+  "ok": true
+}</field>
+                                            <next>
+                                              <block type="ui_alert" id="next_steps">
+                                                <field name="TYPE">success</field>
+                                                <field name="TEXT">✨ Next steps: Try the 'API Users CRUD Demo' to see more advanced API usage with parameters!</field>
+                                              </block>
+                                            </next>
+                                          </block>
+                                        </next>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </next>
+                              </block>
+                            </next>
+                          </block>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+</xml>
