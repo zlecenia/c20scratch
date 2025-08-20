@@ -9,9 +9,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.css"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
     <!-- ES Module bridge that imports API module generators and exposes them globally -->
+    <script src="./js/utils.js"></script>
+    <script src="./js/modules/manager.js"></script>
     <script type="module" src="./js/main-modules.js"></script>
 </head>
 <body>
@@ -133,18 +135,13 @@
         // Define base blocks BEFORE workspace injection to avoid unknown block warnings
         try { defineBaseBlocks(); } catch (e) { console.error('defineBaseBlocks init failed', e); }
 
-        const workspace = Blockly.inject('blocklyDiv', { toolbox: document.getElementById('toolbox') });
+        const workspace = (window.workspace = Blockly.inject('blocklyDiv', { toolbox: document.getElementById('toolbox') }));
 
         // Controls: manual Run and Auto-run toggle
         let autoRunEnabled = true; // preview ON by default
-        function debounce(fn, delay) {
-            let t;
-            return function() {
-                const ctx = this, args = arguments;
-                clearTimeout(t);
-                t = setTimeout(function(){ fn.apply(ctx, args); }, delay);
-            };
-        }
+        const debounce = window.Utils?.debounce || function(fn, delay){
+            let t; return function(){ const ctx=this, args=arguments; clearTimeout(t); t=setTimeout(function(){ fn.apply(ctx,args); }, delay); };
+        };
         const runCodeDebounced = debounce(runCode, 300);
         // Show auto toggle as enabled by default
         try { const t = document.getElementById('autoRunToggle'); if (t) { t.checked = true; } } catch(e){}
@@ -222,44 +219,24 @@
         }
 
         // ---- Blockly XML compatibility helpers (v12+ moved XML utils) ----
-        function xmlTextToDom(text){
-            try {
-                if (Blockly && Blockly.utils && Blockly.utils.xml && Blockly.utils.xml.textToDom) {
-                    return Blockly.utils.xml.textToDom(text);
-                }
-                if (Blockly && Blockly.Xml && Blockly.Xml.textToDom) {
-                    return Blockly.Xml.textToDom(text);
-                }
-            } catch(e) { console.warn('xmlTextToDom fallback', e); }
-            try {
-                const doc = new DOMParser().parseFromString(text, 'text/xml');
-                return doc && (doc.documentElement || doc);
-            } catch(e){ return null; }
-        }
-        function xmlDomToText(dom){
-            try {
-                if (Blockly && Blockly.utils && Blockly.utils.xml && Blockly.utils.xml.domToText) {
-                    return Blockly.utils.xml.domToText(dom);
-                }
-                if (Blockly && Blockly.Xml && Blockly.Xml.domToText) {
-                    return Blockly.Xml.domToText(dom);
-                }
-            } catch(e) { console.warn('xmlDomToText fallback', e); }
-            try { return new XMLSerializer().serializeToString(dom); } catch(e){ return ''; }
-        }
-
-        // Shim: Restore legacy Blockly.Xml.* methods if missing by forwarding to utils.xml
-        try {
-            if (window.Blockly) {
-                window.Blockly.Xml = window.Blockly.Xml || {};
-                if (!window.Blockly.Xml.textToDom && window.Blockly.utils?.xml?.textToDom) {
-                    window.Blockly.Xml.textToDom = function(t){ return window.Blockly.utils.xml.textToDom(t); };
-                }
-                if (!window.Blockly.Xml.domToText && window.Blockly.utils?.xml?.domToText) {
-                    window.Blockly.Xml.domToText = function(d){ return window.Blockly.utils.xml.domToText(d); };
-                }
-            }
-        } catch(e){ console.warn('Blockly XML shim failed', e); }
+        const xmlTextToDom = (window.Utils && window.Utils.xmlTextToDom)
+          ? window.Utils.xmlTextToDom
+          : function(text){
+              try {
+                  if (Blockly && Blockly.utils?.xml?.textToDom) return Blockly.utils.xml.textToDom(text);
+                  if (Blockly && Blockly.Xml?.textToDom) return Blockly.Xml.textToDom(text);
+              } catch(e) { console.warn('xmlTextToDom fallback', e); }
+              try { const doc = new DOMParser().parseFromString(text, 'text/xml'); return doc && (doc.documentElement || doc); } catch(e){ return null; }
+            };
+        const xmlDomToText = (window.Utils && window.Utils.xmlDomToText)
+          ? window.Utils.xmlDomToText
+          : function(dom){
+              try {
+                  if (Blockly && Blockly.utils?.xml?.domToText) return Blockly.utils.xml.domToText(dom);
+                  if (Blockly && Blockly.Xml?.domToText) return Blockly.Xml.domToText(dom);
+              } catch(e) { console.warn('xmlDomToText fallback', e); }
+              try { return new XMLSerializer().serializeToString(dom); } catch(e){ return ''; }
+            };
 
         // Write HTML into the preview iframe via Blob URL to avoid srcdoc escaping and keep sandbox strict
         function writeIframeHTML(html){
@@ -519,10 +496,9 @@
             const fn = sel && sel.value;
             if (fn) window.open('/uploads/'+encodeURIComponent(fn), '_blank');
         }
-        function timestampString(){
-            const d = new Date(); const pad=n=>String(n).padStart(2,'0');
-            return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-        }
+        const timestampString = (window.Utils && window.Utils.timestampString)
+          ? window.Utils.timestampString
+          : function(){ const d=new Date(); const pad=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; };
         function setDefaultProjectNameTimestamp(force){
             const pn = document.getElementById('projectName');
             if (!pn) return;
@@ -732,163 +708,7 @@
         return res.json();
     }
 
-    // Module Management Functions
-    let activeModules = new Set(['ui', 'values']); // Core modules always active
-    let availableModules = [];
-
-    async function openModuleManager() {
-        document.getElementById('moduleModal').style.display = 'block';
-        await loadAvailableModules();
-        updateActiveModulesList();
-    }
-
-    function closeModuleManager() {
-        document.getElementById('moduleModal').style.display = 'none';
-    }
-
-    async function loadAvailableModules() {
-        try {
-            const response = await fetch('/modules/list');
-            const data = await response.json();
-            availableModules = data.modules || [];
-            renderModulesList();
-        } catch (e) {
-            console.error('Failed to load modules:', e);
-        }
-    }
-
-    function renderModulesList() {
-        const container = document.getElementById('modulesList');
-        container.innerHTML = '';
-
-        availableModules.forEach(module => {
-            const moduleDiv = document.createElement('div');
-            moduleDiv.style.cssText = 'border:1px solid #ddd; margin:5px 0; padding:10px; border-radius:4px;';
-            
-            const isActive = activeModules.has(module.id);
-            const isCoreModule = module.type === 'core';
-            
-            moduleDiv.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <strong>${module.name}</strong> <span style="color:#666;">(${module.type})</span>
-                        <br><small>${module.description}</small>
-                    </div>
-                    <div>
-                        ${isActive ? 
-                            `<button onclick="deactivateModule('${module.id}')" ${isCoreModule ? 'disabled' : ''}>
-                                ${isCoreModule ? '🔒 Core' : '✅ Active'}
-                            </button>` :
-                            `<button onclick="activateModule('${module.id}')">➕ Activate</button>`
-                        }
-                    </div>
-                </div>
-            `;
-            container.appendChild(moduleDiv);
-        });
-    }
-
-    async function activateModule(moduleId) {
-        try {
-            activeModules.add(moduleId);
-            await loadModuleBlocks(moduleId);
-            renderModulesList();
-            updateActiveModulesList();
-            console.log(`Module ${moduleId} activated`);
-        } catch (e) {
-            console.error(`Failed to activate module ${moduleId}:`, e);
-            activeModules.delete(moduleId);
-        }
-    }
-
-    function deactivateModule(moduleId) {
-        const module = availableModules.find(m => m.id === moduleId);
-        if (module && module.type !== 'core') {
-            activeModules.delete(moduleId);
-            // Remove blocks from toolbox (would need more complex implementation)
-            renderModulesList();
-            updateActiveModulesList();
-            console.log(`Module ${moduleId} deactivated`);
-        }
-    }
-
-    function updateActiveModulesList() {
-        const container = document.getElementById('activeModulesList');
-        container.innerHTML = '';
-        
-        const activeList = Array.from(activeModules).map(id => {
-            const module = availableModules.find(m => m.id === id);
-            return module ? module.name : id;
-        }).join(', ');
-        
-        container.innerHTML = `<p>Active: ${activeList}</p>`;
-    }
-
-    async function loadModuleBlocks(moduleId) {
-        try {
-            const response = await fetch(`/modules/${moduleId}/spec`);
-            const spec = await response.json();
-            
-            // Prefer modular generators if available, fallback to inline
-            const gens = (window && window.ModuleGenerators) || {};
-            if (moduleId === 'linkedin') {
-                const fn = gens.generateLinkedInBlocks || window.generateLinkedInBlocks;
-                if (typeof fn === 'function') fn(spec); else console.warn('LinkedIn generator not available');
-            } else if (moduleId === 'openai') {
-                const fn = gens.generateOpenAIBlocks || window.generateOpenAIBlocks;
-                if (typeof fn === 'function') fn(spec); else console.warn('OpenAI generator not available');
-            } else if (moduleId === 'mcp') {
-                const fn = gens.generateMCPBlocks || window.generateMCPBlocks;
-                if (typeof fn === 'function') fn(spec); else console.warn('MCP generator not available');
-            }
-            
-            // Refresh toolbox with proper error handling
-            try { 
-                const toolboxElement = document.getElementById('toolbox');
-                if (toolboxElement && workspace && workspace.updateToolbox) {
-                    workspace.updateToolbox(toolboxElement); 
-                }
-            } catch(e) { 
-                console.warn('Module toolbox update failed:', e); 
-            }
-        } catch (e) {
-            console.error(`Failed to load blocks for module ${moduleId}:`, e);
-        }
-    }
-
-    
-
-    async function uploadModuleFile(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        const formData = new FormData();
-        formData.append('file', file);
-
-        try {
-            const response = await fetch('/modules/upload', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const result = await response.json();
-            if (response.ok) {
-                alert('Module uploaded successfully!');
-                await loadAvailableModules();
-            } else {
-                alert('Upload failed: ' + result.error);
-            }
-        } catch (e) {
-            alert('Upload error: ' + e.message);
-        }
-        
-        // Reset file input
-        event.target.value = '';
-    }
-
-    // Make functions globally available
-    window.activateModule = activateModule;
-    window.deactivateModule = deactivateModule;
+    // Module Manager moved to ide/js/modules/manager.js
 
     // --- Generowanie wynikowego HTML ---
     function buildIframeHTML(code) {
