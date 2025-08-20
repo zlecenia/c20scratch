@@ -14,6 +14,7 @@
     <!-- ES Module bridge that imports API module generators and exposes them globally -->
     <script src="./js/utils.js"></script>
     <script src="./js/modules/manager.js"></script>
+    <script src="./js/preview.js"></script>
     <script type="module" src="./js/main-modules.js"></script>
 </head>
 <body>
@@ -238,22 +239,8 @@
               try { return new XMLSerializer().serializeToString(dom); } catch(e){ return ''; }
             };
 
-        // Write HTML into the preview iframe via Blob URL to avoid srcdoc escaping and keep sandbox strict
-        function writeIframeHTML(html){
-            const iframe = document.getElementById('preview');
-            if (!iframe) return;
-            try {
-                // Revoke previous blob URL if any
-                if (window.__previewBlobURL) {
-                    try { URL.revokeObjectURL(window.__previewBlobURL); } catch(_){ }
-                    window.__previewBlobURL = null;
-                }
-                const blob = new Blob([html], {type: 'text/html;charset=utf-8'});
-                const url = URL.createObjectURL(blob);
-                window.__previewBlobURL = url;
-                iframe.src = url;
-            } catch(e){ console.error('Preview render failed', e); }
-        }
+        // Write HTML into the preview iframe via module
+        function writeIframeHTML(html){ return window.Preview && window.Preview.writeIframeHTML ? window.Preview.writeIframeHTML(html) : undefined; }
 
         function updatePreviewFromEditor(){
             const html = getEditorValue();
@@ -711,111 +698,9 @@
     // Module Manager moved to ide/js/modules/manager.js
 
     // --- Generowanie wynikowego HTML ---
-    function buildIframeHTML(code) {
-            // Encode generated code to Base64 to avoid unescaped line breaks in string literals
-            let __b64;
-            try {
-              __b64 = btoa(unescape(encodeURIComponent(code)));
-            } catch(_) {
-              // Fallback without unicode handling
-              __b64 = btoa(code);
-            }
-            return `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8" />
-    <style>
-      body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;padding:12px;}
-      .c20-b{position:relative;}
-      .c20-highlight{outline:2px solid #1976d2; background:rgba(25,118,210,0.08); outline-offset:2px;}
-    </style>
-</head>
-<body>
-    <div id="app"></div>
-    <script>
-        let views = [];
-        let htmlOutput = "";
-        // Base URL of the parent app (used for API calls from sandboxed iframe)
-        const API_BASE = ${JSON.stringify(window.location.origin)};
-        // Helper to wrap HTML with block id for preview highlighting
-        function appendHtmlWithBid(bid, html){
-          const id = bid || '';
-          htmlOutput += '<span class="c20-b" data-bid="'+id+'">'+html+'</span>';
-        }
-        // Highlighting support inside iframe
-        let __hl = [];
-        function __clearHighlight(){ __hl.forEach(el=>el.classList.remove('c20-highlight')); __hl = []; }
-        function highlightByBlockId(bid){
-          __clearHighlight();
-          if (!bid) return;
-          const nodes = document.querySelectorAll('[data-bid="'+bid+'"]');
-          nodes.forEach(el=>{
-            el.classList.add('c20-highlight');
-            try { el.scrollIntoView({block:'nearest', inline:'nearest', behavior:'smooth'}); } catch(_){ }
-          });
-          __hl = Array.from(nodes);
-        }
-        window.addEventListener('message', (ev)=>{
-          const d = ev && ev.data || {};
-          if (d && d.type === 'highlight') highlightByBlockId(d.blockId);
-        });
-        // Execute generated code safely; surface syntax/runtime errors
-        try {
-          const __b64Str = "${__b64}";
-          // Decode Base64 with unicode support
-          const __userCode = decodeURIComponent(escape(atob(__b64Str)));
-          const __wrapped = "(function(){\n" + __userCode + "\n})();";
-          eval(__wrapped);
-        } catch(e) {
-          console.error('Generated code error:', e);
-          try {
-            const pre = document.createElement('pre');
-            pre.textContent = 'Error: ' + (e && e.message ? e.message : String(e));
-            document.body.insertBefore(pre, document.body.firstChild);
-          } catch(_){}
-        }
-        let finalHTML = "";
-        views.forEach(v=>{
-          const bid = v && v.bid ? ' data-bid="'+v.bid+'"' : '';
-          finalHTML += '<section'+bid+' id="'+v.name+'">'+v.html+'</section>';
-        });
-        finalHTML += htmlOutput;
-        document.getElementById('app').innerHTML = finalHTML;
-    <\/script>
-</body>
-</html>`;
-    }
+    function buildIframeHTML(code) { return window.Preview && window.Preview.buildIframeHTML ? window.Preview.buildIframeHTML(code) : ''; }
 
-    function runCode() {
-        try {
-            let code = "";
-            try {
-                code = Blockly.JavaScript.workspaceToCode(workspace);
-            } catch (e) {
-                console.error("Error generating code from workspace:", e);
-                // Show error in preview
-                const errHTML = `<!DOCTYPE html><html><body>
-                        <h3>Error generating code:</h3>
-                        <pre>${(e && e.message) ? e.message.replace(/[<>&]/g, s=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[s])) : 'Unknown error'}</pre>
-                        <p>Please check that all blocks have proper generators defined.</p>
-                    </body></html>`;
-                window.lastIframeHTML = errHTML;
-                setEditorValue(errHTML);
-                writeIframeHTML(errHTML);
-                return;
-            }
-
-            // Create a complete HTML document structure for the iframe
-            let iframeContent = buildIframeHTML(code);
-            window.lastIframeHTML = iframeContent;
-            // update code editor view to show final HTML doc
-            setEditorValue(iframeContent);
-            writeIframeHTML(iframeContent);
-        } catch (e) {
-            console.error("Error in runCode:", e);
-        }
-    }
+    function runCode() { return window.Preview && window.Preview.runCode ? window.Preview.runCode() : undefined; }
 
     // Define all blocks in initialization function to ensure proper timing
     function defineBaseBlocks() {
