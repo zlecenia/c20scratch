@@ -11,12 +11,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+    <!-- ES Module bridge that imports API module generators and exposes them globally -->
+    <script type="module" src="./js/main-modules.js"></script>
 </head>
 <body>
 <h2>IDE z OpenAPI → automatyczne bloki</h2>
 <div id="controls" style="margin: 8px 0;">
   <button id="runBtn">Run Preview</button>
-  <button id="renderTestBtn" title="Render a test HTML with quotes/newlines/backticks">Render Test</button>
   <label style="margin-left:12px;">
     <input type="checkbox" id="autoRunToggle" /> Auto-run on changes
   </label>
@@ -125,6 +126,13 @@
 </xml>
 
     <script>
+        // Safe global alias to Blockly's JS generator to avoid Temporal Dead Zone issues
+        // If Blockly is not yet available, provide a shim with a falsy forBlock
+        var jsGen = (window.Blockly && window.Blockly.JavaScript) ? window.Blockly.JavaScript : { forBlock: null };
+
+        // Define base blocks BEFORE workspace injection to avoid unknown block warnings
+        try { defineBaseBlocks(); } catch (e) { console.error('defineBaseBlocks init failed', e); }
+
         const workspace = Blockly.inject('blocklyDiv', { toolbox: document.getElementById('toolbox') });
 
         // Controls: manual Run and Auto-run toggle
@@ -142,8 +150,6 @@
         try { const t = document.getElementById('autoRunToggle'); if (t) { t.checked = true; } } catch(e){}
         const runBtn = document.getElementById('runBtn');
         if (runBtn) runBtn.addEventListener('click', runCode);
-        const renderTestBtn = document.getElementById('renderTestBtn');
-        if (renderTestBtn) renderTestBtn.addEventListener('click', runRenderTest);
         const reloadApiBtn = document.getElementById('reloadApiBtn');
         if (reloadApiBtn) reloadApiBtn.addEventListener('click', async ()=>{
             try { await generateApiBlocks(); } catch(e){ console.error('Reload API failed', e); }
@@ -635,7 +641,7 @@
                 };
 
                 // Kod JS z bloku (typed generator API with legacy fallback)
-                const jsGen = Blockly.JavaScript;
+                const apiJS = Blockly.JavaScript;
                 const generateCode = function(block, generator) {
                     let actualPath = path;
                     const queryParts = [];
@@ -694,8 +700,8 @@
             `;
                 };
 
-                if (jsGen && jsGen.forBlock) {
-                    jsGen.forBlock[blockName] = generateCode;
+                if (apiJS && apiJS.forBlock) {
+                    apiJS.forBlock[blockName] = generateCode;
                 } else {
                     Blockly.JavaScript[blockName] = generateCode;
                 }
@@ -780,6 +786,7 @@
             `;
             container.appendChild(moduleDiv);
         });
+      };
     }
 
     async function activateModule(moduleId) {
@@ -823,12 +830,17 @@
             const response = await fetch(`/modules/${moduleId}/spec`);
             const spec = await response.json();
             
+            // Prefer modular generators if available, fallback to inline
+            const gens = (window && window.ModuleGenerators) || {};
             if (moduleId === 'linkedin') {
-                generateLinkedInBlocks(spec);
+                const fn = gens.generateLinkedInBlocks || window.generateLinkedInBlocks;
+                if (typeof fn === 'function') fn(spec); else console.warn('LinkedIn generator not available');
             } else if (moduleId === 'openai') {
-                generateOpenAIBlocks(spec);
+                const fn = gens.generateOpenAIBlocks || window.generateOpenAIBlocks;
+                if (typeof fn === 'function') fn(spec); else console.warn('OpenAI generator not available');
             } else if (moduleId === 'mcp') {
-                generateMCPBlocks(spec);
+                const fn = gens.generateMCPBlocks || window.generateMCPBlocks;
+                if (typeof fn === 'function') fn(spec); else console.warn('MCP generator not available');
             }
             
             // Refresh toolbox with proper error handling
@@ -845,267 +857,7 @@
         }
     }
 
-    function generateLinkedInBlocks(spec) {
-        // Add LinkedIn category if not exists - with safety checks
-        let linkedinCategory = document.getElementById('linkedinCategory');
-        if (!linkedinCategory) {
-            linkedinCategory = document.createElement('category');
-            linkedinCategory.id = 'linkedinCategory';
-            linkedinCategory.setAttribute('name', 'LinkedIn');
-            linkedinCategory.setAttribute('colour', '0');
-            
-            const toolbox = document.getElementById('toolbox');
-            if (toolbox) {
-                toolbox.appendChild(linkedinCategory);
-            } else {
-                console.warn('Toolbox element not found for LinkedIn category');
-                return;
-            }
-        }
-
-        // Clear existing blocks to prevent conflicts
-        try {
-            linkedinCategory.innerHTML = '';
-        } catch(e) {
-            console.warn('Could not clear LinkedIn category:', e);
-        }
-
-        Object.entries(spec.blocks || {}).forEach(([blockId, blockSpec]) => {
-            const blockName = `linkedin_${blockId}`;
-            
-            // Add block to toolbox
-            const blockEl = document.createElement('block');
-            blockEl.setAttribute('type', blockName);
-            linkedinCategory.appendChild(blockEl);
-
-            // Define block
-            Blockly.Blocks[blockName] = {
-                init: function() {
-                    this.appendDummyInput().appendField(`📊 ${blockSpec.summary}`);
-                    
-                    // Add parameter inputs
-                    if (blockSpec.params) {
-                        blockSpec.params.forEach(param => {
-                            this.appendValueInput(param.name.toUpperCase())
-                                .appendField(`${param.name}:`)
-                                .setCheck(['String', 'Number']);
-                        });
-                    }
-                    
-                    this.setPreviousStatement(true, null);
-                    this.setNextStatement(true, null);
-                    this.setColour(0);
-                }
-            };
-
-            // Generate code
-            const jsGen = Blockly.JavaScript;
-            const generateCode = function(block, generator) {
-                let url = `"${spec.base_url}${blockSpec.path}"`;
-                
-                // Handle path params
-                if (blockSpec.params) {
-                    blockSpec.params.forEach(param => {
-                        const value = generator ? 
-                            generator.valueToCode(block, param.name.toUpperCase(), generator.ORDER_NONE) :
-                            Blockly.JavaScript.valueToCode(block, param.name.toUpperCase(), Blockly.JavaScript.ORDER_NONE);
-                        if (value) {
-                            url = url.replace(`{${param.name}}`, '" + ' + value + ' + "');
-                        }
-                    });
-                }
-
-                return `
-                    htmlOutput += '<div id="${blockName}">Loading LinkedIn data...</div>';
-                    fetch(${url}, {
-                        headers: {
-                            'Authorization': 'Bearer YOUR_LINKEDIN_TOKEN'
-                        }
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        document.getElementById("${blockName}").innerHTML = 
-                            '<h4>LinkedIn Data:</h4><pre>' + JSON.stringify(data, null, 2) + '</pre>';
-                    })
-                    .catch(err => {
-                        document.getElementById("${blockName}").innerHTML = 
-                            '<div style="color:red">LinkedIn API Error: ' + err.message + '</div>';
-                    });
-                `;
-            };
-
-            if (jsGen && jsGen.forBlock) {
-                jsGen.forBlock[blockName] = generateCode;
-            } else {
-                Blockly.JavaScript[blockName] = generateCode;
-            }
-        });
-    }
-
-    function generateOpenAIBlocks(spec) {
-        // Add OpenAI category with safety checks
-        let openaiCategory = document.getElementById('openaiCategory');
-        if (!openaiCategory) {
-            openaiCategory = document.createElement('category');
-            openaiCategory.id = 'openaiCategory';
-            openaiCategory.setAttribute('name', 'OpenAI');
-            openaiCategory.setAttribute('colour', '300');
-            
-            const toolbox = document.getElementById('toolbox');
-            if (toolbox) {
-                toolbox.appendChild(openaiCategory);
-            } else {
-                console.warn('Toolbox element not found for OpenAI category');
-                return;
-            }
-        }
-
-        // Clear existing blocks to prevent conflicts
-        try {
-            openaiCategory.innerHTML = '';
-        } catch(e) {
-            console.warn('Could not clear OpenAI category:', e);
-        }
-
-        Object.entries(spec.blocks || {}).forEach(([blockId, blockSpec]) => {
-            const blockName = `openai_${blockId}`;
-            
-            const blockEl = document.createElement('block');
-            blockEl.setAttribute('type', blockName);
-            openaiCategory.appendChild(blockEl);
-
-            Blockly.Blocks[blockName] = {
-                init: function() {
-                    this.appendDummyInput().appendField(`🤖 ${blockSpec.summary}`);
-                    
-                    if (blockSpec.params) {
-                        blockSpec.params.forEach(param => {
-                            this.appendValueInput(param.name.toUpperCase())
-                                .appendField(`${param.name}:`)
-                                .setCheck(['String', 'Number']);
-                        });
-                    }
-                    
-                    this.setPreviousStatement(true, null);
-                    this.setNextStatement(true, null);
-                    this.setColour(300);
-                }
-            };
-
-            const generateCode = function(block, generator) {
-                return `
-                    htmlOutput += '<div id="${blockName}">Processing with AI...</div>';
-                    // Note: Replace YOUR_OPENAI_KEY with actual API key
-                    fetch("${spec.base_url}${blockSpec.path}", {
-                        method: "${blockSpec.method}",
-                        headers: {
-                            'Authorization': 'Bearer YOUR_OPENAI_KEY',
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            model: "gpt-3.5-turbo",
-                            messages: [{"role": "user", "content": "Hello from Blockly!"}],
-                            max_tokens: 100
-                        })
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        document.getElementById("${blockName}").innerHTML = 
-                            '<h4>AI Response:</h4><pre>' + JSON.stringify(data, null, 2) + '</pre>';
-                    })
-                    .catch(err => {
-                        document.getElementById("${blockName}").innerHTML = 
-                            '<div style="color:red">OpenAI API Error: ' + err.message + '</div>';
-                    });
-                `;
-            };
-
-            const jsGen = Blockly.JavaScript;
-            if (jsGen && jsGen.forBlock) {
-                jsGen.forBlock[blockName] = generateCode;
-            } else {
-                Blockly.JavaScript[blockName] = generateCode;
-            }
-        });
-    }
-
-    function generateMCPBlocks(spec) {
-        // Add MCP category with safety checks
-        let mcpCategory = document.getElementById('mcpCategory');
-        if (!mcpCategory) {
-            mcpCategory = document.createElement('category');
-            mcpCategory.id = 'mcpCategory';
-            mcpCategory.setAttribute('name', 'MCP');
-            mcpCategory.setAttribute('colour', '45');
-            
-            const toolbox = document.getElementById('toolbox');
-            if (toolbox) {
-                toolbox.appendChild(mcpCategory);
-            } else {
-                console.warn('Toolbox element not found for MCP category');
-                return;
-            }
-        }
-
-        // Clear existing blocks to prevent conflicts
-        try {
-            mcpCategory.innerHTML = '';
-        } catch(e) {
-            console.warn('Could not clear MCP category:', e);
-        }
-
-        Object.entries(spec.blocks || {}).forEach(([blockId, blockSpec]) => {
-            const blockName = `mcp_${blockId}`;
-            
-            const blockEl = document.createElement('block');
-            blockEl.setAttribute('type', blockName);
-            mcpCategory.appendChild(blockEl);
-
-            Blockly.Blocks[blockName] = {
-                init: function() {
-                    this.appendDummyInput().appendField(`🔧 ${blockSpec.summary}`);
-                    
-                    if (blockSpec.params) {
-                        blockSpec.params.forEach(param => {
-                            this.appendValueInput(param.name.toUpperCase())
-                                .appendField(`${param.name}:`)
-                                .setCheck(['String', 'Number']);
-                        });
-                    }
-                    
-                    this.setPreviousStatement(true, null);
-                    this.setNextStatement(true, null);
-                    this.setColour(45);
-                }
-            };
-
-            const generateCode = function(block, generator) {
-                return `
-                    htmlOutput += '<div id="${blockName}">Calling MCP tool...</div>';
-                    fetch("${spec.base_url}${blockSpec.path}", {
-                        method: "${blockSpec.method}",
-                        headers: {'Content-Type': 'application/json'}
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        document.getElementById("${blockName}").innerHTML = 
-                            '<h4>MCP Response:</h4><pre>' + JSON.stringify(data, null, 2) + '</pre>';
-                    })
-                    .catch(err => {
-                        document.getElementById("${blockName}").innerHTML = 
-                            '<div style="color:red">MCP Error: ' + err.message + '</div>';
-                    });
-                `;
-            };
-
-            const jsGen = Blockly.JavaScript;
-            if (jsGen && jsGen.forBlock) {
-                jsGen.forBlock[blockName] = generateCode;
-            } else {
-                Blockly.JavaScript[blockName] = generateCode;
-            }
-        });
-    }
+    
 
     async function uploadModuleFile(event) {
         const file = event.target.files[0];
@@ -1193,46 +945,9 @@
 </body>
 </html>`;
     }
-    // Manual render test to verify newline/quote/backtick handling via document.write
-    function runRenderTest(){
-        try {
-            const testCode = [
-                "const tricky = `<p id=\"t\">\"double\" 'single' \\\"backticks\\\" line1",
-                "line2 & <span>ampersand &copy;</span></p>`;",
-                "views.push({name:\"Test\", bid:\"TESTVIEW\", html: tricky});",
-                "appendHtmlWithBid(\"TEST\", `<div>inline \"q\" 'q' \\\"bt\\\"</div>`);"
-            ].join("\n");
-            const iframeContent = buildIframeHTML(testCode);
-            window.lastIframeHTML = iframeContent;
-            setEditorValue(iframeContent);
-            writeIframeHTML(iframeContent);
-        } catch(e){ console.error('Render test failed', e); }
-    }
 
     function runCode() {
         try {
-            // Ensure generators are registered right before code generation
-            console.log("Ensuring generators are registered...");
-
-            // Re-register add_view generator to ensure it's available (typed generator API with legacy fallback)
-            const jsGen = Blockly.JavaScript;
-            if (jsGen && jsGen.forBlock) {
-                jsGen.forBlock['add_view'] = function(block, generator) {
-                    const name = block.getFieldValue('VIEW');
-                    const content = generator.statementToCode(block, 'CONTENT');
-                    return `views.push({name:"${name}", html:\`${content}\`});\n`;
-                };
-            } else {
-                Blockly.JavaScript['add_view'] = function(block) {
-                    const name = block.getFieldValue('VIEW');
-                    const content = Blockly.JavaScript.statementToCode(block, 'CONTENT');
-                    return `views.push({name:"${name}", html:\`${content}\`});\n`;
-                };
-            }
-
-            console.log("add_view generator (forBlock):", jsGen && jsGen.forBlock ? typeof jsGen.forBlock['add_view'] : 'no forBlock');
-            console.log("add_view generator (legacy):", typeof Blockly.JavaScript['add_view']);
-
             let code = "";
             try {
                 code = Blockly.JavaScript.workspaceToCode(workspace);
@@ -1263,6 +978,8 @@
 
     // Define all blocks in initialization function to ensure proper timing
     function defineBaseBlocks() {
+        // Guard against multiple initializations
+        try { if (Blockly && Blockly.Blocks && Blockly.Blocks['add_view']) return true; } catch(_){ }
         // --- Prosty blok UI (widok) ---
         Blockly.Blocks['add_view'] = {
             init: function() {
@@ -1304,14 +1021,14 @@
             return false;
         }
 
-        const jsGen = Blockly.JavaScript;
+        const codeJS = Blockly.JavaScript;
         // Inject block-id markers into generated code for synchronization with the code editor
         try {
-            jsGen.STATEMENT_PREFIX = '/*@@B:%1:S@@*/\n';
-            jsGen.STATEMENT_SUFFIX = '\n/*@@B:%1:E@@*/\n';
+            codeJS.STATEMENT_PREFIX = '/*@@B:%1:S@@*/\n';
+            codeJS.STATEMENT_SUFFIX = '\n/*@@B:%1:E@@*/\n';
         } catch(e) { console.warn('Could not set statement markers', e); }
-        if (jsGen.forBlock) {
-            jsGen.forBlock['add_view'] = function(block, generator) {
+        if (codeJS.forBlock) {
+            codeJS.forBlock['add_view'] = function(block, generator) {
                 const name = block.getFieldValue('VIEW');
                 const content = generator.statementToCode(block, 'CONTENT');
                 return `
@@ -1949,8 +1666,7 @@
             }
         };
 
-        // JavaScript generators for JSON blocks - Fixed version
-        const jsGen = Blockly.JavaScript;
+        // JavaScript generators for JSON blocks - Fixed version (use global jsGen alias)
         
         // JSON Object block generator
         const jsonObjectGenerator = function(block, generator) {
@@ -1990,30 +1706,6 @@
         return true;
     }
 
-    // Test function to verify Blockly generator registration
-    function testGeneratorRegistration() {
-        console.log("=== BLOCKLY GENERATOR TEST ===");
-        console.log("Blockly object:", typeof Blockly);
-        console.log("Blockly.JavaScript object:", typeof Blockly.JavaScript);
-
-        // Test simple generator registration (typed API with fallback)
-        const jsGen = Blockly.JavaScript;
-        if (jsGen.forBlock) {
-            jsGen.forBlock['test_block'] = function(block, generator) {
-                return 'console.log("test");\n';
-            };
-        } else {
-            Blockly.JavaScript['test_block'] = function(block) {
-                return 'console.log("test");\n';
-            };
-        }
-
-        console.log("test_block (forBlock):", jsGen.forBlock ? typeof jsGen.forBlock['test_block'] : 'no forBlock');
-        console.log("add_view (forBlock):", jsGen.forBlock ? typeof jsGen.forBlock['add_view'] : 'no forBlock');
-        console.log("test_block (legacy):", typeof Blockly.JavaScript['test_block']);
-        console.log("add_view (legacy):", typeof Blockly.JavaScript['add_view']);
-    }
-
     // Start: generuj bloki z OpenAPI i skryptów, potem uruchom runCode
     async function initializeBlocks() {
         // Define base blocks first
@@ -2021,10 +1713,6 @@
             console.error("Failed to define base blocks");
             return;
         }
-
-        // Test generator registration
-        testGeneratorRegistration();
-
         await generateApiBlocks();
         await loadScripts();
 
@@ -2042,22 +1730,7 @@
         // (removed test page injection to keep auto preview)
     }
 
-    // Manual test function
-    window.testCodeGeneration = function() {
-        console.log("=== MANUAL CODE GENERATION TEST ===");
-        testGeneratorRegistration();
-
-        try {
-            let code = Blockly.JavaScript.workspaceToCode(workspace);
-            console.log("Generated code:", code);
-            document.getElementById('preview').contentDocument.getElementById('output').textContent =
-                "Success! Generated code:\n" + code;
-        } catch (e) {
-            console.error("Code generation failed:", e);
-            document.getElementById('preview').contentDocument.getElementById('output').textContent =
-                "Error: " + e.message;
-        }
-    };
+    
 
     // ---- Ładowanie bloków ze skryptów ----
     async function loadScripts() {
@@ -2082,9 +1755,9 @@
           };
 
           // Kod JS z bloku (typed generator API with legacy fallback)
-          const jsGen = Blockly.JavaScript;
-          if (jsGen && jsGen.forBlock) {
-            jsGen.forBlock[blockName] = function(block, generator) {
+          const formJS = Blockly.JavaScript;
+          if (formJS && formJS.forBlock) {
+            formJS.forBlock[blockName] = function(block, generator) {
               // Generowanie formularza HTML
               let formId = `form_${scr.script}_${scr.func}`.replace(/\W/g,"_");
               let inputs = scr.params.map(p => `<label>${p}: <input name="${p}"></label><br>`).join("");
