@@ -786,7 +786,6 @@
             `;
             container.appendChild(moduleDiv);
         });
-      };
     }
 
     async function activateModule(moduleId) {
@@ -893,6 +892,14 @@
 
     // --- Generowanie wynikowego HTML ---
     function buildIframeHTML(code) {
+            // Encode generated code to Base64 to avoid unescaped line breaks in string literals
+            let __b64;
+            try {
+              __b64 = btoa(unescape(encodeURIComponent(code)));
+            } catch(_) {
+              // Fallback without unicode handling
+              __b64 = btoa(code);
+            }
             return `
 <!DOCTYPE html>
 <html>
@@ -933,7 +940,21 @@
           const d = ev && ev.data || {};
           if (d && d.type === 'highlight') highlightByBlockId(d.blockId);
         });
-        ${code}
+        // Execute generated code safely; surface syntax/runtime errors
+        try {
+          const __b64Str = "${__b64}";
+          // Decode Base64 with unicode support
+          const __userCode = decodeURIComponent(escape(atob(__b64Str)));
+          const __wrapped = "(function(){\n" + __userCode + "\n})();";
+          eval(__wrapped);
+        } catch(e) {
+          console.error('Generated code error:', e);
+          try {
+            const pre = document.createElement('pre');
+            pre.textContent = 'Error: ' + (e && e.message ? e.message : String(e));
+            document.body.insertBefore(pre, document.body.firstChild);
+          } catch(_){}
+        }
         let finalHTML = "";
         views.forEach(v=>{
           const bid = v && v.bid ? ' data-bid="'+v.bid+'"' : '';
